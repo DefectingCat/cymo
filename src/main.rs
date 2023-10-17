@@ -1,13 +1,13 @@
-use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{fs, thread};
 
 use anyhow::{Ok as AOk, Result};
 use clap::Parser;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use glob::glob;
-use suppaftp::FtpStream;
+use suppaftp::AsyncFtpStream;
 use tokio::spawn;
 use tokio::sync::Mutex;
 
@@ -81,17 +81,40 @@ async fn main() -> Result<()> {
     for task in tasks {
         let _ = task.await?;
     }
-    println!("Find {} file(s)", files.lock().await.len());
-
-    let mut ftp_stream = FtpStream::connect(format!("{}:21", server))?;
-    if let (Some(username), Some(password)) = (username, password) {
-        ftp_stream.login(username, password)?;
-        println!("Login {} success", server);
-    }
-    ftp_stream.cwd(remote_path)?;
-    println!("Current directory: {}", ftp_stream.pwd()?);
 
     let files = files.lock().await;
+    let len = files.len();
+    println!("Find {} file(s)", len);
+
+    let cpus = thread::available_parallelism()?.get();
+    let div = (len as f64 / cpus as f64).ceil() as usize;
+    dbg!(&div);
+
+    let mut ftp_clients = vec![];
+    for i in 1..=cpus {
+        let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
+        println!("Thread {} connect to {} success", i, &server);
+        if let (Some(username), Some(password)) = (&username, &password) {
+            ftp_stream.login(username, password).await?;
+            println!("Thread {} login {} success", i, &server);
+        }
+        ftp_stream.cwd(&remote_path).await?;
+        println!(
+            "Thread {} current directory: {}",
+            i,
+            ftp_stream.pwd().await?
+        );
+        let ftp_stream = Arc::new(Mutex::new(ftp_stream));
+        ftp_clients.push(ftp_stream);
+    }
+    dbg!(ftp_clients.len());
+
+    let tasks = files
+        .iter()
+        .enumerate()
+        .map(|(i, file)| {})
+        .collect::<Vec<_>>();
+
     // let _ = files
     //     .map(|file| {
     //         let filename = file
@@ -106,6 +129,5 @@ async fn main() -> Result<()> {
     //         Ok(())
     //     })
     //     .collect::<Result<Vec<_>>>();
-
     Ok(())
 }
