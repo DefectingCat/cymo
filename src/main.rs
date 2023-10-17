@@ -2,14 +2,16 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Parser;
 use glob::glob;
 use rayon::prelude::*;
 
 use crate::args::Args;
+use crate::utils::map_mutex_err;
 
 mod args;
+mod utils;
 
 /// Recursively reads all files in the target directory and stores their paths in the `files` vector.
 ///
@@ -51,7 +53,7 @@ mod args;
 /// function completes.
 fn recursive_read_file(files: Arc<Mutex<Vec<PathBuf>>>, path: PathBuf) -> Result<()> {
     if path.is_file() {
-        let mut files = files.lock().map_err(|err| anyhow!("{:?}", err))?;
+        let mut files = files.lock().map_err(map_mutex_err)?;
         files.push(path);
         return Ok(());
     }
@@ -89,7 +91,10 @@ fn main() -> Result<()> {
         })
         .collect::<Result<Vec<_>>>();
 
-    dbg!(&files.lock());
+    println!(
+        "Find {} file(s)",
+        files.lock().map_err(map_mutex_err)?.len()
+    );
 
     // let local_files =  local_path.iter().map(|path| {
     //       dbg!(path);
