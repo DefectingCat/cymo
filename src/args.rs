@@ -25,9 +25,18 @@ use std::path::PathBuf;
 pub struct Args {
     /// The remote path on the FTP server where files will be uploaded.
     #[arg(short, long)]
-    pub remote_path: PathBuf,
+    pub remote_path: String,
 
     /// The local path to the directory or file that will be uploaded to the FTP server.
     #[arg(short, long)]
     pub local_path: String,
+
+    #[arg(short, long)]
+    pub server: String,
+
+    #[arg(short, long)]
+    pub username: Option<String>,
+
+    #[arg(short, long)]
+    pub password: Option<String>,
 }

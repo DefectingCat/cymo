@@ -6,6 +6,7 @@ use anyhow::Result;
 use clap::Parser;
 use glob::glob;
 use rayon::prelude::*;
+use suppaftp::FtpStream;
 
 use crate::args::Args;
 use crate::utils::map_mutex_err;
@@ -72,6 +73,9 @@ fn main() -> Result<()> {
     let Args {
         remote_path,
         local_path,
+        server,
+        username,
+        password,
     } = Args::parse();
 
     let local_path = glob(&local_path)?;
@@ -95,6 +99,14 @@ fn main() -> Result<()> {
         "Find {} file(s)",
         files.lock().map_err(map_mutex_err)?.len()
     );
+
+    let mut ftp_stream = FtpStream::connect(format!("{}:21", server))?;
+    if let (Some(username), Some(password)) = (username, password) {
+        ftp_stream.login(username, password)?;
+        println!("Login {} success", server);
+    }
+    ftp_stream.cwd(remote_path)?;
+    dbg!(ftp_stream.pwd()?);
 
     // let local_files =  local_path.iter().map(|path| {
     //       dbg!(path);
