@@ -15,48 +15,48 @@ use crate::args::Args;
 
 mod args;
 
-/// Recursive File Reading
+/// Recursively reads all the files in a given directory and stores
+/// their paths in a shared data structure.
 ///
-/// This asynchronous function recursively reads all files in the given `path` and appends their paths
-/// to a shared `Vec<PathBuf>` wrapped in an `Arc<Mutex>`. It returns a future representing the
-/// result of the operation.
+/// This function takes two parameters: `files` and `path`. The `files` parameter is an
+/// `Arc<Mutex<Vec<PathBuf>>>`, which is a thread-safe reference-counted pointer to a
+/// mutex-protected vector of file paths. The `path` parameter is a `PathBuf`,
+/// which is a type of owned file or directory path.
 ///
-/// # Arguments
+/// This function returns a `BoxFuture<'static, Result<()>>`, which is a type of heap-allocated
+/// asynchronous value that can be executed later and can return either an empty tuple or an error.
 ///
-/// * `files`: A shared `Arc<Mutex>` of a vector of `PathBuf` where file paths are stored.
-/// * `path`: The directory or file path to start the recursive traversal.
+/// # Examples
 ///
-/// # Returns
-///
-/// A `BoxFuture` that resolves to a `Result` indicating success or an error.
-///
-/// # Example
-///
-/// ```rust
-/// use std::sync::{Arc, Mutex};
-/// use tokio::fs;
-/// use tokio::main;
+/// ```
 /// use std::path::PathBuf;
-/// use your_module::recursive_read_file;
+/// use std::sync::{Arc, Mutex};
+/// use futures::{future::BoxFuture, executor::block_on};
+/// use tokio::fs;
 ///
-/// #[tokio::main]
-/// async fn main() -> Result<()> {
-///     let files: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
-///     let path = PathBuf::from("/path/to/your/directory");
-///
-///     recursive_read_file(files.clone(), path).await?;
-///
-///     let files = files.lock().unwrap();
-///     for file in &*files {
-///         println!("File path: {:?}", file);
-///     }
-///
+/// # [tokio::main]
+/// async fn main () -> Result< (), Box<dyn std::error::Error>> {
+///     // Create a shared data structure to store the file paths
+///     let files = Arc::new(Mutex::new(Vec::new()));
+///     // Create a path to the current directory
+///     let path = PathBuf::from(".");
+///     // Call the recursive_read_file function and get the future
+///     let future = recursive_read_file(files.clone(), path);
+///     // Await the future to complete
+///     future.await?;
+///     // Print the file paths
+///     println!("{:?}", files.lock().unwrap());
 ///     Ok(())
 /// }
 /// ```
 ///
-/// In this example, the `recursive_read_file` function is used to recursively traverse a directory
-/// and collect file paths in a shared vector.
+/// # Errors
+///
+/// This function may return an error if:
+///
+/// - The `path` is neither a file nor a directory.
+/// - There is an error while reading the directory entries.
+/// - There is an error while creating or executing a task.fn recursive_read_file(
 fn recursive_read_file(
     files: Arc<Mutex<Vec<PathBuf>>>,
     path: PathBuf,
