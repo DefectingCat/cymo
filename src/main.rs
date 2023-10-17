@@ -16,6 +16,48 @@ use crate::args::Args;
 mod args;
 mod utils;
 
+/// Recursive File Reading
+///
+/// This asynchronous function recursively reads all files in the given `path` and appends their paths
+/// to a shared `Vec<PathBuf>` wrapped in an `Arc<Mutex>`. It returns a future representing the
+/// result of the operation.
+///
+/// # Arguments
+///
+/// * `files`: A shared `Arc<Mutex>` of a vector of `PathBuf` where file paths are stored.
+/// * `path`: The directory or file path to start the recursive traversal.
+///
+/// # Returns
+///
+/// A `BoxFuture` that resolves to a `Result` indicating success or an error.
+///
+/// # Example
+///
+/// ```rust
+/// use std::sync::{Arc, Mutex};
+/// use tokio::fs;
+/// use tokio::main;
+/// use std::path::PathBuf;
+/// use your_module::recursive_read_file;
+///
+/// #[tokio::main]
+/// async fn main() -> Result<()> {
+///     let files: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
+///     let path = PathBuf::from("/path/to/your/directory");
+///
+///     recursive_read_file(files.clone(), path).await?;
+///
+///     let files = files.lock().unwrap();
+///     for file in &*files {
+///         println!("File path: {:?}", file);
+///     }
+///
+///     Ok(())
+/// }
+/// ```
+///
+/// In this example, the `recursive_read_file` function is used to recursively traverse a directory
+/// and collect file paths in a shared vector.
 fn recursive_read_file(
     files: Arc<Mutex<Vec<PathBuf>>>,
     path: PathBuf,
