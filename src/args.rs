@@ -9,5 +9,5 @@ pub struct Args {
     pub remote_path: PathBuf,
 
     #[arg(short, long)]
-    pub local_path: PathBuf,
+    pub local_path: String,
 }
