@@ -56,7 +56,7 @@ mod args;
 ///
 /// - The `path` is neither a file nor a directory.
 /// - There is an error while reading the directory entries.
-/// - There is an error while creating or executing a task.fn recursive_read_file(
+/// - There is an error while creating or executing a task.
 fn recursive_read_file(
     files: Arc<Mutex<Vec<PathBuf>>>,
     path: PathBuf,
