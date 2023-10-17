@@ -13,3 +13,6 @@ glob = "0.3.1"
 suppaftp = { version = "5.2.1", features = ["async", "async-native-tls", "async-secure"] }
 suppaftp-cli = "5.2.0"
 tokio = { version = "1.33.0", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3.8.0"

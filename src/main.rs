@@ -14,7 +14,6 @@ use tokio::sync::Mutex;
 use crate::args::Args;
 
 mod args;
-mod utils;
 
 /// Recursive File Reading
 ///
@@ -172,4 +171,47 @@ async fn main() -> Result<()> {
     //     })
     //     .collect::<Result<Vec<_>>>();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::fs;
+
+    #[tokio::test]
+    async fn test_recursive_read_file() {
+        // Create a temporary test directory
+        let temp_dir = tempfile::tempdir().unwrap();
+        let test_path = temp_dir.path().to_path_buf();
+
+        // Create some test files and directories
+        let file1 = test_path.join("file1.txt");
+        let file2 = test_path.join("file2.txt");
+        let sub_dir = test_path.join("sub_dir");
+        let file3 = sub_dir.join("file3.txt");
+        fs::write(&file1, "Test file 1 content").await.unwrap();
+        fs::write(&file2, "Test file 2 content").await.unwrap();
+        fs::create_dir(&sub_dir).await.unwrap();
+        fs::write(&file3, "Test file 3 content").await.unwrap();
+
+        // Create an Arc<Mutex> to hold the collected file paths
+        let files: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
+
+        // Call the recursive_read_file function
+        recursive_read_file(files.clone(), test_path.clone())
+            .await
+            .expect("Failed to read files recursively");
+
+        // Lock the files mutex to access the collected paths
+        let files = files.lock().await;
+
+        // Check if the collected paths match the expected paths
+        assert_eq!(files.len(), 3);
+        assert!(files.contains(&file1));
+        assert!(files.contains(&file2));
+        assert!(files.contains(&file3));
+
+        // Clean up the temporary test directory
+        temp_dir.close().unwrap();
+    }
 }

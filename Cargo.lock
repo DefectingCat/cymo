@@ -434,6 +434,7 @@ dependencies = [
  "glob",
  "suppaftp",
  "suppaftp-cli",
+ "tempfile",
  "tokio",
 ]
 
