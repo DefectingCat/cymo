@@ -6,12 +6,14 @@ use anyhow::{anyhow, Ok as AOk, Result};
 use clap::Parser;
 use crossbeam_channel::unbounded;
 use futures::future::BoxFuture;
-use futures::FutureExt;
+use futures::{AsyncReadExt, FutureExt};
 use glob::glob;
 use suppaftp::AsyncFtpStream;
-use tokio::runtime;
+use tokio::fs::File;
 use tokio::spawn;
 use tokio::sync::{Mutex, RwLock};
+use tokio::{io, runtime};
+use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
 
 use crate::args::Args;
 
@@ -189,14 +191,17 @@ fn main() -> Result<()> {
                         i,
                         ftp_stream.pwd().await?
                     );
-                    let _ = r
-                        .recv()
-                        .into_iter()
-                        .map(|files| {
-                            dbg!(files.len());
-                            AOk(())
-                        })
-                        .collect::<Result<Vec<_>>>()?;
+                    for file in r.recv()? {
+                        let filename = file
+                            .file_name()
+                            .ok_or(anyhow!(""))?
+                            .to_str()
+                            .ok_or(anyhow!(""))?;
+                        let mut local = File::open(&file).await?;
+                        let mut remote = ftp_stream.put_with_stream(filename).await?.compat_write();
+                        io::copy(&mut local, &mut remote).await?;
+                        ftp_stream.finalize_put_stream(remote.compat()).await?;
+                    }
                     AOk(())
                 });
                 if let Err(err) = handle {
