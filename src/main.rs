@@ -4,6 +4,7 @@ use std::{fs, thread};
 
 use anyhow::{anyhow, Ok as AOk, Result};
 use clap::Parser;
+use crossbeam_channel::unbounded;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use glob::glob;
@@ -138,9 +139,33 @@ fn main() -> Result<()> {
     main_rt.shutdown_background();
 
     let cpus = thread::available_parallelism()?.get();
-    let threads = (1..=cpus)
+
+    let (s, r) = unbounded();
+    thread::spawn(move || {
+        let rt = runtime::Builder::new_current_thread().build().unwrap();
+        rt.block_on(async {
+            let mut files = files.lock().await;
+            let len = files.len();
+            let (quotient, remainder) = (len / cpus, len % cpus); // calculate the quotient and remainders.send()
+            let start = 0;
+            (0..cpus).for_each(|i| {
+                let end = if i < remainder {
+                    // if i is less than the remainder, add one extra element to the smaller array
+                    start + quotient + 1
+                } else {
+                    // otherwise, use the quotient as the size of the smaller array
+                    start + quotient
+                };
+                let file_data = files.drain(start..end).collect::<Vec<_>>();
+                s.send(file_data).unwrap();
+            });
+        });
+    });
+
+    let threads = (1..cpus)
         .map(|i| {
             let args = args.clone();
+            let r = r.clone();
             thread::spawn(move || {
                 let rt = runtime::Builder::new_current_thread().build().unwrap();
                 let handle = rt.block_on(async {
@@ -164,6 +189,14 @@ fn main() -> Result<()> {
                         i,
                         ftp_stream.pwd().await?
                     );
+                    let _ = r
+                        .recv()
+                        .into_iter()
+                        .map(|files| {
+                            dbg!(files.len());
+                            AOk(())
+                        })
+                        .collect::<Result<Vec<_>>>()?;
                     AOk(())
                 });
                 if let Err(err) = handle {
