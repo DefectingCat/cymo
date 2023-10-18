@@ -1,18 +1,17 @@
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::{fs, thread};
+use std::{fs, path::PathBuf, sync::Arc, thread};
 
 use anyhow::{anyhow, Ok as AOk, Result};
 use clap::Parser;
 use crossbeam_channel::unbounded;
 use futures::future::BoxFuture;
-use futures::{AsyncReadExt, FutureExt};
+use futures::FutureExt;
 use glob::glob;
 use suppaftp::AsyncFtpStream;
-use tokio::fs::File;
-use tokio::spawn;
-use tokio::sync::{Mutex, RwLock};
-use tokio::{io, runtime};
+use tokio::{
+    fs::File,
+    io, runtime, spawn,
+    sync::{Mutex, RwLock},
+};
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
 
 use crate::args::Args;
