@@ -10,7 +10,7 @@ use glob::glob;
 use suppaftp::AsyncFtpStream;
 use tokio::runtime;
 use tokio::spawn;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::args::Args;
 
@@ -90,19 +90,22 @@ fn recursive_read_file(
 }
 
 fn main() -> Result<()> {
-    let Args {
-        remote_path,
-        local_path,
-        server,
-        username,
-        password,
-    } = Args::parse();
+    // let Args {
+    //     remote_path,
+    //     local_path,
+    //     server,
+    //     username,
+    //     password,
+    // } = Args::parse();
+    let args = Args::parse();
+    let args = Arc::new(RwLock::new(args));
 
-    let local_path = glob(&local_path)?;
     let files = Arc::new(Mutex::new(vec![]));
 
     let main_rt = runtime::Builder::new_multi_thread().build()?;
     let main_handle = main_rt.block_on(async {
+        let local_path = &args.read().await.local_path;
+        let local_path = glob(local_path)?;
         let tasks = local_path
             .into_iter()
             .map(|path| {
@@ -137,15 +140,20 @@ fn main() -> Result<()> {
     let cpus = thread::available_parallelism()?.get();
     let threads = (1..=cpus)
         .map(|i| {
-            let password = password.clone();
-            let username = username.clone();
-            let remote_path = remote_path.clone();
-            let server = server.clone();
+            let args = args.clone();
             thread::spawn(move || {
                 let rt = runtime::Builder::new_current_thread().build().unwrap();
-                let _ = rt.block_on(async {
+                let handle = rt.block_on(async {
+                    let args = &args.read().await;
+                    let Args {
+                        username,
+                        password,
+                        server,
+                        remote_path,
+                        ..
+                    } = &*(*(args));
                     let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
-                    println!("Thread {} connect to {} success", i, &server);
+                    println!("Thread {} connect to {} success", i, server);
                     if let (Some(username), Some(password)) = (&username, &password) {
                         ftp_stream.login(username, password).await?;
                         println!("Thread {} login {} success", i, &server);
@@ -158,6 +166,9 @@ fn main() -> Result<()> {
                     );
                     AOk(())
                 });
+                if let Err(err) = handle {
+                    eprintln!("Thread {} got error {}", i, err);
+                };
             })
         })
         .collect::<Vec<_>>();
@@ -240,8 +251,9 @@ fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tokio::fs;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_recursive_read_file() {
