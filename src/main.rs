@@ -2,12 +2,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, thread};
 
-use anyhow::{Ok as AOk, Result};
+use anyhow::{anyhow, Ok as AOk, Result};
 use clap::Parser;
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use glob::glob;
 use suppaftp::AsyncFtpStream;
+use tokio::runtime;
 use tokio::spawn;
 use tokio::sync::Mutex;
 
@@ -88,8 +89,7 @@ fn recursive_read_file(
     .boxed()
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let Args {
         remote_path,
         local_path,
@@ -100,61 +100,126 @@ async fn main() -> Result<()> {
 
     let local_path = glob(&local_path)?;
     let files = Arc::new(Mutex::new(vec![]));
-    let tasks = local_path
-        .into_iter()
-        .map(|path| {
-            let files = files.clone();
-            spawn(async move {
-                match path {
-                    Ok(path) => {
-                        recursive_read_file(files.clone(), path).await?;
-                        AOk(())
+
+    let main_rt = runtime::Builder::new_multi_thread().build()?;
+    let main_handle = main_rt.block_on(async {
+        let tasks = local_path
+            .into_iter()
+            .map(|path| {
+                let files = files.clone();
+                spawn(async move {
+                    match path {
+                        Ok(path) => {
+                            recursive_read_file(files.clone(), path).await?;
+                            AOk(())
+                        }
+                        Err(err) => {
+                            eprintln!("Read file failed {}", err);
+                            AOk(())
+                        }
                     }
-                    Err(err) => {
-                        eprintln!("Read file failed {}", err);
-                        AOk(())
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for task in tasks {
+            let _ = task.await?;
+        }
+
+        let files = files.lock().await;
+        let len = files.len();
+        println!("Find {} file(s)", len);
+        AOk(())
+    });
+    main_handle?;
+    main_rt.shutdown_background();
+
+    let cpus = thread::available_parallelism()?.get();
+    let threads = (1..=cpus)
+        .map(|i| {
+            let password = password.clone();
+            let username = username.clone();
+            let remote_path = remote_path.clone();
+            let server = server.clone();
+            thread::spawn(move || {
+                let rt = runtime::Builder::new_current_thread().build().unwrap();
+                let _ = rt.block_on(async {
+                    let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
+                    println!("Thread {} connect to {} success", i, &server);
+                    if let (Some(username), Some(password)) = (&username, &password) {
+                        ftp_stream.login(username, password).await?;
+                        println!("Thread {} login {} success", i, &server);
                     }
-                }
+                    ftp_stream.cwd(&remote_path).await?;
+                    println!(
+                        "Thread {} current directory: {}",
+                        i,
+                        ftp_stream.pwd().await?
+                    );
+                    AOk(())
+                });
             })
         })
         .collect::<Vec<_>>();
-
-    for task in tasks {
-        let _ = task.await?;
+    for thread in threads {
+        thread.join().map_err(|err| anyhow!("{:?}", err))?;
     }
+    dbg!("test");
 
-    let files = files.lock().await;
-    let len = files.len();
-    println!("Find {} file(s)", len);
-
-    let cpus = thread::available_parallelism()?.get();
-    let div = (len as f64 / cpus as f64).ceil() as usize;
-    dbg!(&div);
-
-    let mut ftp_clients = vec![];
-    for i in 1..=cpus {
-        let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
-        println!("Thread {} connect to {} success", i, &server);
-        if let (Some(username), Some(password)) = (&username, &password) {
-            ftp_stream.login(username, password).await?;
-            println!("Thread {} login {} success", i, &server);
-        }
-        ftp_stream.cwd(&remote_path).await?;
-        println!(
-            "Thread {} current directory: {}",
-            i,
-            ftp_stream.pwd().await?
-        );
-        let ftp_stream = Arc::new(Mutex::new(ftp_stream));
-        ftp_clients.push(ftp_stream);
-    }
-    dbg!(ftp_clients.len());
-
-    let tasks = files
-        .iter()
-        .enumerate()
-        .map(|(i, file)| {})
-        .collect::<Vec<_>>();
+    //
+    // let cpus = thread::available_parallelism()?.get();
+    // let div = (len as f64 / cpus as f64).ceil() as usize;
+    //
+    // let mut ftp_clients = vec![];
+    // let tasks = (1..=cpus)
+    //     .map(|i| {
+    //         spawn(async move {
+    //             let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
+    //             println!("Thread {} connect to {} success", i, &server);
+    //             if let (Some(username), Some(password)) = (&username, &password) {
+    //                 ftp_stream.login(username, password).await?;
+    //                 println!("Thread {} login {} success", i, &server);
+    //             }
+    //             ftp_stream.cwd(&remote_path).await?;
+    //             println!(
+    //                 "Thread {} current directory: {}",
+    //                 i,
+    //                 ftp_stream.pwd().await?
+    //             );
+    //             AOk(())
+    //         })
+    //     })
+    //     .collect::<Vec<_>>();
+    // for i in 1..=cpus {
+    //     let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
+    //     println!("Thread {} connect to {} success", i, &server);
+    //     if let (Some(username), Some(password)) = (&username, &password) {
+    //         ftp_stream.login(username, password).await?;
+    //         println!("Thread {} login {} success", i, &server);
+    //     }
+    //     ftp_stream.cwd(&remote_path).await?;
+    //     println!(
+    //         "Thread {} current directory: {}",
+    //         i,
+    //         ftp_stream.pwd().await?
+    //     );
+    //     let ftp_stream = Arc::new(Mutex::new(ftp_stream));
+    //     ftp_clients.push(ftp_stream);
+    // }
+    // dbg!(ftp_clients.len());
+    //
+    // let tasks = files
+    //     .iter()
+    //     .enumerate()
+    //     .map(|(i, file)| {
+    //         spawn(async move {
+    //             // This is index of ftp clients
+    //             // Both i and div is usize, no convert and floor() needed
+    //             // let index = i / div;
+    //             // let client = &ftp_clients[index].lock().await;
+    //         })
+    //     })
+    //     .collect::<Vec<_>>();
 
     // let _ = files
     //     .map(|file| {
