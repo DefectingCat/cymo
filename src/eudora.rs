@@ -54,7 +54,6 @@ pub async fn connect_and_init(
     remote_path: &str,
 ) -> Result<String> {
     println!("Thread {} connect to {} success", i, server);
-    dbg!(username);
     if let (Some(username), Some(password)) = (&username, &password) {
         ftp_stream.login(username, password).await?;
         println!("Thread {} login {} success", i, &server);
@@ -95,28 +94,44 @@ pub async fn change_remote(
     let parents = parents
         .components()
         .collect::<Vec<_>>()
-        .iter()
+        .into_iter()
         .skip(1)
-        .collect::<PathBuf>();
-    // Current remote directory
-    let mut remote = PathBuf::from(&current_remote);
-    remote.push(&parents);
-    let remote = remote.to_string_lossy();
-    // Current local directory
-    let parents = parents.to_string_lossy();
-    if parents.len() != 0 {
-        // Create or change to it.
-        match ftp_stream.cwd(&remote).await {
-            Ok(_) => {
-                let remote = ftp_stream.pwd().await?;
-                println!("Thread {} change directory to {} success", i, remote);
-            }
-            Err(_) => {
-                ftp_stream.mkdir(&remote).await?;
-                println!("Thread {} create directory {} success", i, remote);
-                ftp_stream.cwd(&remote).await?;
-                println!("Thread {} change directory to {} success", i, remote);
-            }
+        .collect::<Vec<_>>();
+    // .components()
+    // .collect::<Vec<_>>();
+    let len = parents.len();
+    for index in 0..=len {
+        let local_path = &parents[..index]
+            .iter()
+            .fold(PathBuf::new(), |mut prev, cur| {
+                prev.push(PathBuf::from(cur));
+                prev
+            });
+        // Current remote directory
+        let mut remote = PathBuf::from(&current_remote);
+        remote.push(local_path);
+        let remote = remote.to_string_lossy();
+        // Current local directory
+        if local_path.to_string_lossy().len() != 0 {
+            // Create or change to it.
+            remote_mkdir(ftp_stream, i, &remote).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn remote_mkdir(ftp_stream: &mut AsyncFtpStream, i: usize, remote: &str) -> Result<()> {
+    // Create or change to it.
+    match ftp_stream.cwd(&remote).await {
+        Ok(_) => {
+            let remote = ftp_stream.pwd().await?;
+            println!("Thread {} change directory to {} success", i, remote);
+        }
+        Err(_) => {
+            ftp_stream.mkdir(&remote).await?;
+            println!("Thread {} create directory {} success", i, remote);
+            ftp_stream.cwd(&remote).await?;
+            println!("Thread {} change directory to {} success", i, remote);
         }
     }
     Ok(())
