@@ -9,14 +9,12 @@ use glob::glob;
 use suppaftp::AsyncFtpStream;
 
 use tokio::{
-    fs::File,
-    io, runtime, spawn,
+    runtime, spawn,
     sync::{Mutex, RwLock},
 };
-use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
 
 use crate::args::Args;
-use crate::eudora::connect_and_init;
+use crate::eudora::{connect_and_init, upload_files};
 
 mod args;
 mod eudora;
@@ -94,16 +92,7 @@ fn recursive_read_file(
     .boxed()
 }
 
-// static PARENT: OnceLock<Path>
-
 fn main() -> Result<()> {
-    // let Args {
-    //     remote_path,
-    //     local_path,
-    //     server,
-    //     username,
-    //     password,
-    // } = Args::parse();
     let args = Arc::new(RwLock::new(Args::parse()));
     let files = Arc::new(Mutex::new(vec![]));
 
@@ -115,7 +104,7 @@ fn main() -> Result<()> {
             .into_iter()
             .map(|path| {
                 let files = files.clone();
-                spawn(async move {
+                let task = async move {
                     match path {
                         Ok(path) => {
                             recursive_read_file(files.clone(), path).await?;
@@ -126,7 +115,8 @@ fn main() -> Result<()> {
                             AOk(())
                         }
                     }
-                })
+                };
+                spawn(task)
             })
             .collect::<Vec<_>>();
 
@@ -143,12 +133,16 @@ fn main() -> Result<()> {
     main_rt.shutdown_background();
 
     let cpus = thread::available_parallelism()?.get();
+    // This channel used by send all files to be upload to child threads
     let (s, r) = unbounded();
+    // This thread prepare each threads files to upload.
     thread::spawn(move || {
         let rt = runtime::Builder::new_current_thread().build().unwrap();
         rt.block_on(async {
             let mut files = files.lock().await;
+            // Total files length
             let len = files.len();
+            // Div by cpu nums
             let (quotient, remainder) = (len / cpus, len % cpus); // calculate the quotient and remainders.send()
             let start = 0;
             (0..cpus).for_each(|i| {
@@ -160,7 +154,13 @@ fn main() -> Result<()> {
                     start + quotient
                 };
                 let file_data = files.drain(start..end).collect::<Vec<_>>();
-                s.send(file_data).unwrap();
+                let len = file_data.len();
+                if let Err(err) = s.send(file_data) {
+                    eprintln!(
+                        "Send files to thread failed {:?}. {} files not send",
+                        err, len
+                    );
+                }
             });
         });
     });
@@ -169,7 +169,7 @@ fn main() -> Result<()> {
         .map(|i| {
             let args = args.clone();
             let r = r.clone();
-            thread::spawn(move || {
+            let task = move || {
                 let rt = runtime::Builder::new_current_thread().build().unwrap();
                 let handle = rt.block_on(async {
                     let args = &args.read().await;
@@ -181,7 +181,6 @@ fn main() -> Result<()> {
                         ..
                     } = &*(*(args));
                     let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
-
                     let current_remote = connect_and_init(
                         &mut ftp_stream,
                         i,
@@ -194,60 +193,7 @@ fn main() -> Result<()> {
 
                     // Receive files from main thread.
                     for path in r.recv()? {
-                        // Current local file filename
-                        let filename = path
-                            .file_name()
-                            .ok_or(anyhow!(""))?
-                            .to_str()
-                            .ok_or(anyhow!(""))?;
-                        // Current local file parent directories
-                        let parents = path.parent();
-                        // Check remote directory exists
-                        // And change into it.
-                        if let Some(parents) = parents {
-                            let parents = parents
-                                .components()
-                                .collect::<Vec<_>>()
-                                .iter()
-                                .skip(1)
-                                .collect::<PathBuf>();
-                            // Current remote directory
-                            let mut remote = PathBuf::from(&current_remote);
-                            remote.push(&parents);
-                            let remote = remote.to_string_lossy();
-                            // Current local directory
-                            let parents = parents.to_string_lossy();
-                            if parents.len() != 0 {
-                                // Create or change to it.
-                                match ftp_stream.cwd(&remote).await {
-                                    Ok(_) => {
-                                        let remote = ftp_stream.pwd().await?;
-                                        println!(
-                                            "Thread {} change directory to {} success",
-                                            i, remote
-                                        );
-                                    }
-                                    Err(_) => {
-                                        ftp_stream.mkdir(&remote).await?;
-                                        println!(
-                                            "Thread {} create directory {} success",
-                                            i, remote
-                                        );
-                                        ftp_stream.cwd(&remote).await?;
-                                        println!(
-                                            "Thread {} change directory to {} success",
-                                            i, remote
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                        // Upload files
-                        let mut local = File::open(&path).await?;
-                        let mut remote = ftp_stream.put_with_stream(filename).await?.compat_write();
-                        io::copy(&mut local, &mut remote).await?;
-                        ftp_stream.finalize_put_stream(remote.compat()).await?;
-                        println!("Thread {} upload file {:?} success", i, &path);
+                        upload_files(&mut ftp_stream, i, &path, &current_remote).await?;
                     }
                     ftp_stream.quit().await?;
                     println!("Thread {} exiting", i);
@@ -256,13 +202,14 @@ fn main() -> Result<()> {
                 if let Err(err) = handle {
                     eprintln!("Thread {} got error {}", i, err);
                 };
-            })
+            };
+
+            thread::spawn(task)
         })
         .collect::<Vec<_>>();
     for thread in threads {
         thread.join().map_err(|err| anyhow!("{:?}", err))?;
     }
-
     Ok(())
 }
 
