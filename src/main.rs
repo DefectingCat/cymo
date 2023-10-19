@@ -16,8 +16,10 @@ use tokio::{
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
 
 use crate::args::Args;
+use crate::eudora::connect_and_init;
 
 mod args;
+mod eudora;
 
 /// Recursively reads all the files in a given directory and stores
 /// their paths in a shared data structure.
@@ -103,7 +105,6 @@ fn main() -> Result<()> {
     //     password,
     // } = Args::parse();
     let args = Arc::new(RwLock::new(Args::parse()));
-
     let files = Arc::new(Mutex::new(vec![]));
 
     let main_rt = runtime::Builder::new_multi_thread().build()?;
@@ -142,7 +143,6 @@ fn main() -> Result<()> {
     main_rt.shutdown_background();
 
     let cpus = thread::available_parallelism()?.get();
-
     let (s, r) = unbounded();
     thread::spawn(move || {
         let rt = runtime::Builder::new_current_thread().build().unwrap();
@@ -181,14 +181,16 @@ fn main() -> Result<()> {
                         ..
                     } = &*(*(args));
                     let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
-                    println!("Thread {} connect to {} success", i, server);
-                    if let (Some(username), Some(password)) = (&username, &password) {
-                        ftp_stream.login(username, password).await?;
-                        println!("Thread {} login {} success", i, &server);
-                    }
-                    ftp_stream.cwd(&remote_path).await?;
-                    let current_remote = ftp_stream.pwd().await?;
-                    println!("Thread {} current directory: {}", i, current_remote);
+
+                    let current_remote = connect_and_init(
+                        &mut ftp_stream,
+                        i,
+                        server,
+                        username.as_ref(),
+                        password.as_ref(),
+                        remote_path,
+                    )
+                    .await?;
 
                     // Receive files from main thread.
                     for path in r.recv()? {
