@@ -193,7 +193,14 @@ fn main() -> Result<()> {
 
                     // Receive files from main thread.
                     for path in r.recv()? {
-                        upload_files(&mut ftp_stream, i, &path, &current_remote).await?;
+                        match upload_files(&mut ftp_stream, i, &path, &current_remote).await {
+                            Ok(_) => {
+                                println!("Thread {} upload file {:?} success", i, &path);
+                            }
+                            Err(err) => {
+                                eprintln!("Thread {} upload {:?} failed {}", i, &path, err)
+                            }
+                        }
                     }
                     ftp_stream.quit().await?;
                     println!("Thread {} exiting", i);

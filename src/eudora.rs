@@ -187,6 +187,5 @@ pub async fn upload_files(
     let mut remote = ftp_stream.put_with_stream(filename).await?.compat_write();
     io::copy(&mut local, &mut remote).await?;
     ftp_stream.finalize_put_stream(remote.compat()).await?;
-    println!("Thread {} upload file {:?} success", i, &path);
     Ok(())
 }
