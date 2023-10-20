@@ -91,14 +91,22 @@ pub async fn change_remote(
     parents: &Path,
     current_remote: &str,
 ) -> Result<()> {
+    // Skip folders from params @TODO add skip
     let parents = parents
         .components()
         .collect::<Vec<_>>()
         .into_iter()
         .skip(1)
         .collect::<Vec<_>>();
-    // .components()
-    // .collect::<Vec<_>>();
+
+    // The final remote path
+    let mut remote = PathBuf::from(&current_remote);
+    remote.push(parents.iter().collect::<PathBuf>());
+    // If path is same, do not change directory
+    if remote.to_string_lossy() == current_remote {
+        return Ok(());
+    }
+
     let len = parents.len();
     for index in 0..=len {
         let local_path = &parents[..index]
