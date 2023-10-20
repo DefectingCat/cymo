@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Ok as AOk, Result};
-use futures::future::BoxFuture;
+use futures::future::{try_join_all, BoxFuture};
 use futures::FutureExt;
 use suppaftp::AsyncFtpStream;
 use tokio::fs::File;
@@ -81,9 +81,7 @@ pub fn recursive_read_file(
                     })
                 })
                 .collect::<Vec<_>>();
-            for task in tasks {
-                let _ = task.await?;
-            }
+            try_join_all(tasks.into_iter().map(|task| async move { task.await? })).await?;
         }
         Ok(())
     }

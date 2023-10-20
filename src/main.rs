@@ -77,25 +77,29 @@ fn main() -> Result<()> {
             // Div by cpu nums
             let (quotient, remainder) = (len / cpus, len % cpus); // calculate the quotient and remainders.send()
             let start = 0;
-            (0..cpus).for_each(|i| {
-                let end = if i < remainder {
-                    // if i is less than the remainder, add one extra element to the smaller array
-                    start + quotient + 1
-                } else {
-                    // otherwise, use the quotient as the size of the smaller array
-                    start + quotient
-                };
-                let file_data = files.drain(start..end).collect::<Vec<_>>();
-                let len = file_data.len();
-                if let Err(err) = s.send(file_data) {
-                    eprintln!(
-                        "Send files to thread failed {:?}. {} files not send",
-                        err, len
-                    );
-                }
-            });
+            let sender = (0..cpus)
+                .map(|i| {
+                    let end = if i < remainder {
+                        // if i is less than the remainder, add one extra element to the smaller array
+                        start + quotient + 1
+                    } else {
+                        // otherwise, use the quotient as the size of the smaller array
+                        start + quotient
+                    };
+                    let file_data = files.drain(start..end).collect::<Vec<_>>();
+                    s.send(file_data)?;
+                    AOk(())
+                })
+                .collect::<Result<Vec<_>>>();
+            (sender, len)
         };
-        rt.block_on(task);
+        let (result, len) = rt.block_on(task);
+        let _ = result.map_err(|err| {
+            eprintln!(
+                "Send files to thread failed {:?}. {} files not send",
+                err, len
+            );
+        });
     };
     thread::spawn(task);
 
