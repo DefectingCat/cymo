@@ -34,26 +34,24 @@ fn main() -> Result<()> {
     let main_handle = main_rt.block_on(async {
         let local_path = &args.local_path;
         let local_path = glob(local_path)?;
-        let tasks = local_path
-            .into_iter()
-            .map(|path| {
-                let files = files.clone();
-                let task = async move {
-                    match path {
-                        Ok(path) => {
-                            recursive_read_file(files.clone(), path).await?;
-                            AOk(())
-                        }
-                        Err(err) => {
-                            eprintln!("Read file failed {}", err);
-                            AOk(())
-                        }
-                    }
-                };
-                spawn(task)
-            })
-            .collect::<Vec<_>>();
 
+        let task = |path| {
+            let files = files.clone();
+            let task = async move {
+                match path {
+                    Ok(path) => {
+                        recursive_read_file(files.clone(), path).await?;
+                        AOk(())
+                    }
+                    Err(err) => {
+                        eprintln!("Read file failed {}", err);
+                        AOk(())
+                    }
+                }
+            };
+            spawn(task)
+        };
+        let tasks = local_path.into_iter().map(task).collect::<Vec<_>>();
         for task in tasks {
             let _ = task.await?;
         }
@@ -70,9 +68,9 @@ fn main() -> Result<()> {
     // This channel used by send all files to be upload to child threads
     let (s, r) = unbounded();
     // This thread prepare each threads files to upload.
-    thread::spawn(move || {
+    let task = move || {
         let rt = runtime::Builder::new_current_thread().build().unwrap();
-        rt.block_on(async {
+        let task = async {
             let mut files = files.lock().await;
             // Total files length
             let len = files.len();
@@ -96,42 +94,43 @@ fn main() -> Result<()> {
                     );
                 }
             });
-        });
-    });
+        };
+        rt.block_on(task);
+    };
+    thread::spawn(task);
 
-    let threads = (1..cpus)
-        .map(|i| {
-            let r = r.clone();
-            let task = move || {
-                let rt = runtime::Builder::new_current_thread().build().unwrap();
-                let handle = rt.block_on(async {
-                    let Args { server, .. } = get_args()?;
-                    let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
-                    let current_remote = connect_and_init(&mut ftp_stream, i).await?;
+    let thread_task = |i| {
+        let r = r.clone();
+        let task = move || {
+            let rt = runtime::Builder::new_current_thread().build().unwrap();
+            let handle = rt.block_on(async {
+                let Args { server, .. } = get_args()?;
+                let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
+                let current_remote = connect_and_init(&mut ftp_stream, i).await?;
 
-                    // Receive files from main thread.
-                    for path in r.recv()? {
-                        match upload_files(&mut ftp_stream, i, &path, &current_remote).await {
-                            Ok(_) => {
-                                println!("Thread {} upload file {:?} success", i, &path);
-                            }
-                            Err(err) => {
-                                eprintln!("Thread {} upload {:?} failed {}", i, &path, err)
-                            }
+                // Receive files from main thread.
+                for path in r.recv()? {
+                    match upload_files(&mut ftp_stream, i, &path, &current_remote).await {
+                        Ok(_) => {
+                            println!("Thread {} upload file {:?} success", i, &path);
+                        }
+                        Err(err) => {
+                            eprintln!("Thread {} upload {:?} failed {}", i, &path, err)
                         }
                     }
-                    ftp_stream.quit().await?;
-                    println!("Thread {} exiting", i);
-                    AOk(())
-                });
-                if let Err(err) = handle {
-                    eprintln!("Thread {} got error {}", i, err);
-                };
+                }
+                ftp_stream.quit().await?;
+                println!("Thread {} exiting", i);
+                AOk(())
+            });
+            if let Err(err) = handle {
+                eprintln!("Thread {} got error {}", i, err);
             };
+        };
 
-            thread::spawn(task)
-        })
-        .collect::<Vec<_>>();
+        thread::spawn(task)
+    };
+    let threads = (1..cpus).map(thread_task).collect::<Vec<_>>();
     for thread in threads {
         thread.join().map_err(|err| anyhow!("{:?}", err))?;
     }
