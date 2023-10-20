@@ -6,10 +6,7 @@ use clap::Parser;
 use crossbeam_channel::unbounded;
 use glob::glob;
 use suppaftp::AsyncFtpStream;
-use tokio::{
-    runtime, spawn,
-    sync::{Mutex, RwLock},
-};
+use tokio::{runtime, spawn, sync::Mutex};
 
 use crate::args::Args;
 use crate::eudora::{connect_and_init, get_args, recursive_read_file, upload_files};
@@ -21,7 +18,7 @@ mod eudora;
 static ARG: OnceLock<Args> = OnceLock::new();
 
 fn main() -> Result<()> {
-    let args = ARG.get_or_init(|| Args::parse());
+    let args = ARG.get_or_init(Args::parse);
     let files = Arc::new(Mutex::new(vec![]));
 
     let main_rt = runtime::Builder::new_multi_thread().build()?;
@@ -95,7 +92,6 @@ fn main() -> Result<()> {
 
     let threads = (1..cpus)
         .map(|i| {
-            let args = args.clone();
             let r = r.clone();
             let task = move || {
                 let rt = runtime::Builder::new_current_thread().build().unwrap();

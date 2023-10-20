@@ -2,8 +2,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::args::Args;
-use crate::ARG;
 use anyhow::{anyhow, Ok as AOk, Result};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -12,6 +10,9 @@ use tokio::fs::File;
 use tokio::sync::Mutex;
 use tokio::{io, spawn};
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
+
+use crate::args::Args;
+use crate::ARG;
 
 pub fn get_args<'a>() -> Result<&'a Args> {
     ARG.get().ok_or(anyhow!("Parse args error"))
@@ -174,12 +175,20 @@ pub async fn change_remote(
     parents: &Path,
     current_remote: &str,
 ) -> Result<()> {
-    // Skip folders from params @TODO add skip
+    let Args { local_path, .. } = get_args()?;
+    // Collect path from params
+    let local_path: PathBuf = PathBuf::from(local_path);
+    let param_path = local_path.parent();
+    if param_path.is_none() {
+        return Ok(());
+    }
+
+    // Skip folders from params
     let parents = parents
         .components()
         .collect::<Vec<_>>()
         .into_iter()
-        .skip(1)
+        .skip(param_path.iter().len())
         .collect::<Vec<_>>();
 
     // The final remote path
