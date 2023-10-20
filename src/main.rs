@@ -1,3 +1,4 @@
+use std::sync::OnceLock;
 use std::{sync::Arc, thread};
 
 use anyhow::{anyhow, Ok as AOk, Result};
@@ -11,18 +12,21 @@ use tokio::{
 };
 
 use crate::args::Args;
-use crate::eudora::{connect_and_init, recursive_read_file, upload_files};
+use crate::eudora::{connect_and_init, get_args, recursive_read_file, upload_files};
 
 mod args;
 mod eudora;
 
+// Arguments
+static ARG: OnceLock<Args> = OnceLock::new();
+
 fn main() -> Result<()> {
-    let args = Arc::new(RwLock::new(Args::parse()));
+    let args = ARG.get_or_init(|| Args::parse());
     let files = Arc::new(Mutex::new(vec![]));
 
     let main_rt = runtime::Builder::new_multi_thread().build()?;
     let main_handle = main_rt.block_on(async {
-        let local_path = &args.read().await.local_path;
+        let local_path = &args.local_path;
         let local_path = glob(local_path)?;
         let tasks = local_path
             .into_iter()
@@ -96,24 +100,9 @@ fn main() -> Result<()> {
             let task = move || {
                 let rt = runtime::Builder::new_current_thread().build().unwrap();
                 let handle = rt.block_on(async {
-                    let args = &args.read().await;
-                    let Args {
-                        username,
-                        password,
-                        server,
-                        remote_path,
-                        ..
-                    } = &*(*(args));
+                    let Args { server, .. } = get_args()?;
                     let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
-                    let current_remote = connect_and_init(
-                        &mut ftp_stream,
-                        i,
-                        server,
-                        username.as_ref(),
-                        password.as_ref(),
-                        remote_path,
-                    )
-                    .await?;
+                    let current_remote = connect_and_init(&mut ftp_stream, i).await?;
 
                     // Receive files from main thread.
                     for path in r.recv()? {

@@ -2,6 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::args::Args;
+use crate::ARG;
 use anyhow::{anyhow, Ok as AOk, Result};
 use futures::future::BoxFuture;
 use futures::FutureExt;
@@ -10,6 +12,10 @@ use tokio::fs::File;
 use tokio::sync::Mutex;
 use tokio::{io, spawn};
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
+
+pub fn get_args<'a>() -> Result<&'a Args> {
+    ARG.get().ok_or(anyhow!("Parse args error"))
+}
 
 /// Recursively reads all the files in a given directory and stores
 /// their paths in a shared data structure.
@@ -122,14 +128,14 @@ pub fn recursive_read_file(
 ///
 /// This function may return an error if any of the FTP operations fail, such as connecting, logging
 /// in, or changing directory. The error will contain the details of the failure.
-pub async fn connect_and_init(
-    ftp_stream: &mut AsyncFtpStream,
-    i: usize,
-    server: &str,
-    username: Option<&String>,
-    password: Option<&String>,
-    remote_path: &str,
-) -> Result<String> {
+pub async fn connect_and_init(ftp_stream: &mut AsyncFtpStream, i: usize) -> Result<String> {
+    let Args {
+        username,
+        password,
+        remote_path,
+        server,
+        ..
+    } = get_args()?;
     println!("Thread {} connect to {} success", i, server);
     if let (Some(username), Some(password)) = (&username, &password) {
         ftp_stream.login(username, password).await?;
