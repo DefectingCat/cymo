@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::{sync::Arc, thread};
 
@@ -16,9 +17,17 @@ mod eudora;
 
 // Arguments
 static ARG: OnceLock<Args> = OnceLock::new();
+// Used for skip folders
+static PARAM_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
 
 fn main() -> Result<()> {
-    let args = ARG.get_or_init(Args::parse);
+    let args = Args::parse();
+    PARAM_PATH.get_or_init(|| {
+        let local_path = PathBuf::from(&args.local_path);
+        let parent = local_path.parent();
+        parent.map(PathBuf::from)
+    });
+    let args = ARG.get_or_init(|| args);
     let files = Arc::new(Mutex::new(vec![]));
 
     let main_rt = runtime::Builder::new_multi_thread().build()?;

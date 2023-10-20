@@ -12,7 +12,7 @@ use tokio::{io, spawn};
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
 
 use crate::args::Args;
-use crate::ARG;
+use crate::{ARG, PARAM_PATH};
 
 pub fn get_args<'a>() -> Result<&'a Args> {
     ARG.get().ok_or(anyhow!("Parse args error"))
@@ -175,10 +175,8 @@ pub async fn change_remote(
     parents: &Path,
     current_remote: &str,
 ) -> Result<()> {
-    let Args { local_path, .. } = get_args()?;
     // Collect path from params
-    let local_path: PathBuf = PathBuf::from(local_path);
-    let param_path = local_path.parent();
+    let param_path = PARAM_PATH.get().ok_or(anyhow!("Parse args error"))?;
     if param_path.is_none() {
         return Ok(());
     }
