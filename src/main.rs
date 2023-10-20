@@ -2,10 +2,11 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::{sync::Arc, thread};
 
-use anyhow::{anyhow, Ok as AOk, Result};
+use anyhow::{anyhow, Context, Ok as AOk, Result};
 use clap::Parser;
 use crossbeam_channel::unbounded;
-use glob::glob;
+use futures::future::try_join_all;
+use glob::{glob, GlobResult};
 use suppaftp::AsyncFtpStream;
 use tokio::{runtime, spawn, sync::Mutex};
 
@@ -35,26 +36,17 @@ fn main() -> Result<()> {
         let local_path = &args.local_path;
         let local_path = glob(local_path)?;
 
-        let task = |path| {
+        let task = |path: GlobResult| {
             let files = files.clone();
             let task = async move {
-                match path {
-                    Ok(path) => {
-                        recursive_read_file(files.clone(), path).await?;
-                        AOk(())
-                    }
-                    Err(err) => {
-                        eprintln!("Read file failed {}", err);
-                        AOk(())
-                    }
-                }
+                let path = path.with_context(|| "Read file failed")?;
+                recursive_read_file(files.clone(), path).await?;
+                AOk(())
             };
             spawn(task)
         };
         let tasks = local_path.into_iter().map(task).collect::<Vec<_>>();
-        for task in tasks {
-            let _ = task.await?;
-        }
+        try_join_all(tasks.into_iter().map(|task| async move { task.await? })).await?;
 
         let files = files.lock().await;
         let len = files.len();
@@ -94,6 +86,7 @@ fn main() -> Result<()> {
             (sender, len)
         };
         let (result, len) = rt.block_on(task);
+        // @TODO retry, when files is empty, exit threads
         let _ = result.map_err(|err| {
             eprintln!(
                 "Send files to thread failed {:?}. {} files not send",
@@ -109,19 +102,18 @@ fn main() -> Result<()> {
             let rt = runtime::Builder::new_current_thread().build().unwrap();
             let handle = rt.block_on(async {
                 let Args { server, .. } = get_args()?;
+                println!("Thread {} connecting {}", i, &server);
+                // @TODO add server port configuration
                 let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
                 let current_remote = connect_and_init(&mut ftp_stream, i).await?;
 
                 // Receive files from main thread.
+                // @TODO thread continue
                 for path in r.recv()? {
-                    match upload_files(&mut ftp_stream, i, &path, &current_remote).await {
-                        Ok(_) => {
-                            println!("Thread {} upload file {:?} success", i, &path);
-                        }
-                        Err(err) => {
-                            eprintln!("Thread {} upload {:?} failed {}", i, &path, err)
-                        }
-                    }
+                    upload_files(&mut ftp_stream, i, &path, &current_remote)
+                        .await
+                        .with_context(|| format!("Thread {} upload {:?} failed", i, &path))?;
+                    println!("Thread {} upload file {:?} success", i, &path);
                 }
                 ftp_stream.quit().await?;
                 println!("Thread {} exiting", i);
