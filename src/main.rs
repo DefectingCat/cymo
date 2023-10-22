@@ -45,8 +45,7 @@ fn main() -> Result<()> {
             };
             spawn(task)
         };
-        let tasks = local_path.into_iter().map(task).collect::<Vec<_>>();
-        try_join_all(tasks.into_iter().map(|task| async move { task.await? })).await?;
+        try_join_all(local_path.into_iter().map(task)).await?;
 
         let files = files.lock().await;
         let len = files.len();

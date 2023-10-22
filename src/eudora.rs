@@ -72,16 +72,14 @@ pub fn recursive_read_file(
         }
         if path.is_dir() {
             let dir = fs::read_dir(&path)?;
-            let tasks = dir
-                .map(|path| {
-                    let files = files.clone();
-                    spawn(async move {
-                        recursive_read_file(files, path?.path()).await?;
-                        AOk(())
-                    })
+            try_join_all(dir.map(|path| {
+                let files = files.clone();
+                spawn(async move {
+                    recursive_read_file(files, path?.path()).await?;
+                    AOk(())
                 })
-                .collect::<Vec<_>>();
-            try_join_all(tasks.into_iter().map(|task| async move { task.await? })).await?;
+            }))
+            .await?;
         }
         Ok(())
     }
