@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1] - 2023-10-23
+
+### Added
+
+- Sort local file list by directory name
+- Improve performance
+- Improve binary size
+
+### Fixed
+
+- Remote directory detection
+- Change same remote directory repeatedly
+
 ## [0.2.0] - 2023-10-20
 
 ### Added

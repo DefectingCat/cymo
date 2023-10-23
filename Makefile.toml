@@ -17,7 +17,7 @@ command = "cargo"
 args = ["test"]
 dependencies = ["clean"]
 
-[tasks.build-wasm]
+[tasks.build]
 command = "cargo"
 args = ["build", "--release"]
 dependencies = ["clean"]
