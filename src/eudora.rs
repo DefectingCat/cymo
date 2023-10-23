@@ -62,6 +62,7 @@ pub fn get_args<'a>() -> Result<&'a Args> {
 /// - There is an error while creating or executing a task.
 pub fn recursive_read_file(
     files: Arc<Mutex<Vec<PathBuf>>>,
+    depth: Arc<Mutex<usize>>,
     path: PathBuf,
 ) -> BoxFuture<'static, Result<()>> {
     async move {
@@ -72,10 +73,18 @@ pub fn recursive_read_file(
         }
         if path.is_dir() {
             let dir = fs::read_dir(&path)?;
+            {
+                let mut d = depth.lock().await;
+                let len = &path.iter().count();
+                if *d < *len {
+                    *d = *len
+                }
+            }
             try_join_all(dir.map(|path| {
                 let files = files.clone();
+                let depth = depth.clone();
                 spawn(async move {
-                    recursive_read_file(files, path?.path()).await?;
+                    recursive_read_file(files, depth, path?.path()).await?;
                     AOk(())
                 })
             }))
@@ -300,9 +309,10 @@ mod tests {
 
         // Create an Arc<Mutex> to hold the collected file paths
         let files: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
+        let depth = Arc::new(Mutex::new(0_usize));
 
         // Call the recursive_read_file function
-        recursive_read_file(files.clone(), test_path.clone())
+        recursive_read_file(files.clone(), depth, test_path.clone())
             .await
             .expect("Failed to read files recursively");
 

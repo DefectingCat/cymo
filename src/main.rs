@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::{sync::Arc, thread};
@@ -30,6 +31,8 @@ fn main() -> Result<()> {
     });
     let args = ARG.get_or_init(|| args);
     let files = Arc::new(Mutex::new(vec![]));
+    // Local directory depth, params not included
+    let depth = Arc::new(Mutex::new(0_usize));
 
     let main_rt = runtime::Builder::new_multi_thread().build()?;
     let main_handle = main_rt.block_on(async {
@@ -38,16 +41,46 @@ fn main() -> Result<()> {
 
         let task = |path: GlobResult| {
             let files = files.clone();
+            let depth = depth.clone();
             let task = async move {
                 let path = path.with_context(|| "Read file failed")?;
-                recursive_read_file(files.clone(), path).await?;
+                recursive_read_file(files.clone(), depth, path).await?;
                 AOk(())
             };
             spawn(task)
         };
         try_join_all(local_path.into_iter().map(task)).await?;
 
-        let files = files.lock().await;
+        let mut files = files.lock().await;
+        let depth = depth.lock().await;
+        files.sort_by_key(|a| a.iter().count());
+        let param_path = PARAM_PATH.get().ok_or(anyhow!("Parse args error"))?;
+        let start = if param_path.is_none() {
+            0
+        } else {
+            param_path.iter().count()
+        };
+        (start..*depth - 1).for_each(|i| {
+            files.sort_by(|a, b| {
+                let empty = PathBuf::new();
+                let child_a = a
+                    .parent()
+                    .unwrap_or(&empty)
+                    .components()
+                    .collect::<Vec<_>>();
+                let child_a = child_a.get(i);
+                let child_b = b
+                    .parent()
+                    .unwrap_or(&empty)
+                    .components()
+                    .collect::<Vec<_>>();
+                let child_b = child_b.get(i);
+                match (child_a, child_b) {
+                    (Some(a), Some(b)) => a.cmp(b),
+                    _ => Ordering::Equal,
+                }
+            })
+        });
         let len = files.len();
         println!("Find {} file(s)", len);
         AOk(())
