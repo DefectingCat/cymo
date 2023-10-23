@@ -21,6 +21,8 @@ mod eudora;
 static ARG: OnceLock<Args> = OnceLock::new();
 // Used for skip folders
 static PARAM_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+// Remote path, used for detect remote path
+static REMOTE_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -29,6 +31,7 @@ fn main() -> Result<()> {
         let parent = local_path.parent();
         parent.map(PathBuf::from)
     });
+    REMOTE_PATH.get_or_init(|| PathBuf::from(&args.remote_path));
     let args = ARG.get_or_init(|| args);
     let files = Arc::new(Mutex::new(vec![]));
     // Local directory depth, params not included
@@ -118,7 +121,7 @@ fn main() -> Result<()> {
             (sender, len)
         };
         let (result, len) = rt.block_on(task);
-        // @TODO retry, when files is empty, exit threads
+        // TODO retry, when files is empty, exit threads
         let _ = result.map_err(|err| {
             eprintln!(
                 "Send files to thread failed {:?}. {} files not send",
@@ -135,14 +138,14 @@ fn main() -> Result<()> {
             let handle = rt.block_on(async {
                 let Args { server, .. } = get_args()?;
                 println!("Thread {} connecting {}", i, &server);
-                // @TODO add server port configuration
+                // TODO add server port configuration
                 let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
-                let current_remote = connect_and_init(&mut ftp_stream, i).await?;
+                connect_and_init(&mut ftp_stream, i).await?;
 
                 // Receive files from main thread.
-                // @TODO thread continue
+                // TODO thread continue
                 for path in r.recv()? {
-                    upload_files(&mut ftp_stream, i, &path, &current_remote)
+                    upload_files(&mut ftp_stream, i, &path)
                         .await
                         .with_context(|| format!("Thread {} upload {:?} failed", i, &path))?;
                     println!("Thread {} upload file {:?} success", i, &path);

@@ -12,7 +12,7 @@ use tokio::{io, spawn};
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
 
 use crate::args::Args;
-use crate::{ARG, PARAM_PATH};
+use crate::{ARG, PARAM_PATH, REMOTE_PATH};
 
 pub fn get_args<'a>() -> Result<&'a Args> {
     ARG.get().ok_or(anyhow!("Parse args error"))
@@ -134,7 +134,7 @@ pub fn recursive_read_file(
 ///
 /// This function may return an error if any of the FTP operations fail, such as connecting, logging
 /// in, or changing directory. The error will contain the details of the failure.
-pub async fn connect_and_init(ftp_stream: &mut AsyncFtpStream, i: usize) -> Result<String> {
+pub async fn connect_and_init(ftp_stream: &mut AsyncFtpStream, i: usize) -> Result<()> {
     let Args {
         username,
         password,
@@ -153,7 +153,7 @@ pub async fn connect_and_init(ftp_stream: &mut AsyncFtpStream, i: usize) -> Resu
     if let Some(welcome) = ftp_stream.get_welcome_msg() {
         println!("{}", welcome);
     }
-    Ok(current_remote)
+    Ok(())
 }
 
 /// Changes the remote directory on the FTP server to match the local directory.
@@ -195,7 +195,8 @@ pub async fn change_remote(
         .collect::<Vec<_>>();
 
     // The final remote path
-    let mut remote = PathBuf::from(&current_remote);
+    let remote_path = REMOTE_PATH.get().ok_or(anyhow!(""))?;
+    let mut remote = PathBuf::from(&remote_path);
     remote.push(parents.iter().collect::<PathBuf>());
     // If path is same, do not change directory
     if remote.to_string_lossy() == current_remote {
@@ -211,7 +212,7 @@ pub async fn change_remote(
                 prev
             });
         // Current remote directory
-        let mut remote = PathBuf::from(&current_remote);
+        let mut remote = PathBuf::from(&remote_path);
         remote.push(local_path);
         let remote = remote.to_string_lossy();
         // Current local directory
@@ -258,24 +259,21 @@ async fn remote_mkdir(ftp_stream: &mut AsyncFtpStream, i: usize, remote: &str) -
 /// let current_remote = "/var/www/html";
 /// upload_files(&mut ftp_stream, i, &path, current_remote).await?;
 /// ```
-pub async fn upload_files(
-    ftp_stream: &mut AsyncFtpStream,
-    i: usize,
-    path: &Path,
-    current_remote: &str,
-) -> Result<()> {
+pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path) -> Result<()> {
     // Current local file filename
     let filename = path
         .file_name()
-        .ok_or(anyhow!(""))?
+        .ok_or(anyhow!("read file name failed"))?
         .to_str()
-        .ok_or(anyhow!(""))?;
+        .ok_or(anyhow!("read file name failed"))?;
+
+    let current_remote = ftp_stream.pwd().await?;
     // Current local file parent directories
     let parents = path.parent();
     // Check remote directory exists
     // And change into it.
     if let Some(parents) = parents {
-        change_remote(ftp_stream, i, parents, current_remote).await?;
+        change_remote(ftp_stream, i, parents, &current_remote).await?;
     }
     // Upload files
     let mut local = File::open(&path).await?;
