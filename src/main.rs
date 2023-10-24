@@ -91,6 +91,7 @@ fn main() -> Result<()> {
     main_handle?;
     main_rt.shutdown_background();
 
+    // TODO add custom thread number
     let cpus = thread::available_parallelism()?.get();
     // This channel used by send all files to be upload to child threads
     let (s, r) = unbounded();
@@ -101,10 +102,11 @@ fn main() -> Result<()> {
             let mut files = files.lock().await;
             // Total files length
             let len = files.len();
-            // Div by cpu nums
-            let (quotient, remainder) = (len / cpus, len % cpus); // calculate the quotient and remainders.send()
+            // Div by cpu nums - 1
+            let div = cpus - 1;
+            let (quotient, remainder) = (len / div, len % div); // calculate the quotient and remainders.send()
             let start = 0;
-            let sender = (0..cpus)
+            let sender = (0..div)
                 .map(|i| {
                     let end = if i < remainder {
                         // if i is less than the remainder, add one extra element to the smaller array
@@ -144,10 +146,9 @@ fn main() -> Result<()> {
 
                 // Receive files from main thread.
                 // TODO thread continue
-                for path in r.recv()? {
-                    upload_files(&mut ftp_stream, i, &path)
-                        .await
-                        .with_context(|| format!("Thread {} upload {:?} failed", i, &path))?;
+                // TODO add uploaded files count
+                for path in (r.recv()?).into_iter() {
+                    upload_files(&mut ftp_stream, i, &path).await?;
                     println!("Thread {} upload file {:?} success", i, &path);
                 }
                 ftp_stream.quit().await?;
