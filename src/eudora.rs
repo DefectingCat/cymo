@@ -276,6 +276,8 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
         change_remote(ftp_stream, i, parents, &current_remote).await?;
     }
     // Upload files
+    // TODO FILETYPE
+    // https://docs.rs/suppaftp/latest/suppaftp/types/enum.FileType.html#
     let mut local = File::open(&path).await?;
     let mut remote = ftp_stream.put_with_stream(filename).await?.compat_write();
     io::copy(&mut local, &mut remote).await?;
