@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::path::PathBuf;
+use std::process::exit;
 use std::sync::OnceLock;
 use std::{sync::Arc, thread};
 
@@ -55,6 +56,10 @@ fn main() -> Result<()> {
         try_join_all(local_path.into_iter().map(task)).await?;
 
         let mut files = files.lock().await;
+        if files.len() == 0 {
+            println!("Local target file is empty no not exist.");
+            exit(0);
+        }
         let depth = depth.lock().await;
         files.sort_by_key(|a| a.iter().count());
         let param_path = PARAM_PATH.get().ok_or(anyhow!("Parse args error"))?;
