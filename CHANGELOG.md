@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.3] - 2023-10-30
+
+### Added
+
+- Detect local file mime type and set is binary or text file to FTP server.
+
+### Fixed
+
+- Panic when local files not exist.
+
 ## [0.2.2] - 2023-10-24
 
 ### Fixed
