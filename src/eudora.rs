@@ -5,8 +5,10 @@ use std::sync::Arc;
 use anyhow::{anyhow, Ok as AOk, Result};
 use futures::future::{try_join_all, BoxFuture};
 use futures::FutureExt;
+use suppaftp::types::{FileType, FormatControl};
 use suppaftp::AsyncFtpStream;
 use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 use tokio::{io, spawn};
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
@@ -278,7 +280,20 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
     // Upload files
     // TODO FILETYPE
     // https://docs.rs/suppaftp/latest/suppaftp/types/enum.FileType.html#
+    // TODO replace file
     let mut local = File::open(&path).await?;
+    // Detect file type
+    let mut magic_number = [0u8; 8];
+    local.read_exact(&mut magic_number).await?;
+    let mime_type = infer::get(&magic_number).map(|kind| kind.mime_type());
+    if mime_type.is_some() {
+        ftp_stream.transfer_type(FileType::Binary).await?;
+    } else {
+        ftp_stream
+            .transfer_type(FileType::Ascii(FormatControl::Default))
+            .await?;
+    }
+    // Stream file content to ftp server
     let mut remote = ftp_stream.put_with_stream(filename).await?.compat_write();
     io::copy(&mut local, &mut remote).await?;
     ftp_stream.finalize_put_stream(remote.compat()).await?;
