@@ -22,6 +22,11 @@ command = "cargo"
 args = ["build", "--release"]
 dependencies = ["clean"]
 
+[tasks.build-darwin]
+command = "mv"
+args = ["target/release/cymo", "target/release/cymo-aarch64-apple-darwin"]
+dependencies = ["build"]
+
 [tasks.install]
 command = "cargo"
 args = ["install", "--path", "."]
