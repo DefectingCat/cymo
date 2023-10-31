@@ -18,3 +18,12 @@ case "$(uname -m)" in
 esac
 
 echo "$arch$OS"
+
+function detectCurl() {
+    if !(command -v caurl >/dev/null 2>&1); then
+        echo "curl does not exist"
+        exit 1
+    fi
+}
+
+detectCurl
