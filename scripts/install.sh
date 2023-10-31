@@ -20,10 +20,13 @@ esac
 echo "$arch$OS"
 
 function detectCurl() {
-    if !(command -v caurl >/dev/null 2>&1); then
+    if !(command -v curl >/dev/null 2>&1); then
         echo "curl does not exist"
         exit 1
     fi
 }
 
 detectCurl
+
+url="http://192.168.1.22/lilinjun/cymo/uploads/2a759444eeeeb1e7e26f6326aaa6db5b/cymo-$arch$OS"
+curl "$url" -o "cymo"
