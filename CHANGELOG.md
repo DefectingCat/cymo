@@ -1,5 +1,18 @@
 # Changelog
 
+
+## [0.2.3] - 2023-11-01
+
+### Added
+
+- Count total uploaded files.
+- Retry when upload failed.
+
+### Fixed
+
+- Upload single file failed.
+- Upload empty or less 8 bytes file failed.
+
 ## [0.2.3] - 2023-10-30
 
 ### Added

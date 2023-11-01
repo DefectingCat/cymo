@@ -283,16 +283,16 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
     let mut local = File::open(&path).await?;
     // Detect file type
     let mut magic_number = [0u8; 8];
-    // let count = local.read(&mut magic_number).await;
-    // local.read_exact(&mut magic_number).await?;
-    // let mime_type = infer::get(&magic_number).map(|kind| kind.mime_type());
-    // if mime_type.is_some() {
-    //     ftp_stream.transfer_type(FileType::Binary).await?;
-    // } else {
-    //     ftp_stream
-    //         .transfer_type(FileType::Ascii(FormatControl::Default))
-    //         .await?;
-    // }
+    if local.read_exact(&mut magic_number).await.is_ok() {
+        let mime_type = infer::get(&magic_number).map(|kind| kind.mime_type());
+        if mime_type.is_some() {
+            ftp_stream.transfer_type(FileType::Binary).await?;
+        } else {
+            ftp_stream
+                .transfer_type(FileType::Ascii(FormatControl::Default))
+                .await?;
+        }
+    };
 
     let mut local = File::open(&path).await?;
     // Stream file content to ftp server
@@ -304,6 +304,7 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
 
 /// TODO maximum retry times
 /// TODO skip failed files
+/// TODO show file upload speed
 #[async_recursion(?Send)]
 pub async fn upload(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path) -> Result<()> {
     match upload_files(ftp_stream, i, path).await {

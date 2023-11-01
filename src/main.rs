@@ -163,7 +163,9 @@ fn main() -> Result<()> {
                     thread_count = count
                 }
                 ftp_stream.quit().await?;
-                thread_count += 1;
+                if thread_count != 0 {
+                    thread_count += 1;
+                }
                 match file_count.lock() {
                     Ok(mut file_count) => {
                         *file_count += thread_count;
