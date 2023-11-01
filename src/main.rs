@@ -21,17 +21,13 @@ mod eudora;
 // Arguments
 static ARG: OnceLock<Args> = OnceLock::new();
 // Used for skip folders
-static PARAM_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+static PARAM_PATH: OnceLock<PathBuf> = OnceLock::new();
 // Remote path, used for detect remote path
 static REMOTE_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    PARAM_PATH.get_or_init(|| {
-        let local_path = PathBuf::from(&args.local_path);
-        let parent = local_path.parent();
-        parent.map(PathBuf::from)
-    });
+    PARAM_PATH.get_or_init(|| PathBuf::from(&args.local_path));
     REMOTE_PATH.get_or_init(|| PathBuf::from(&args.remote_path));
     let args = ARG.get_or_init(|| args);
     let files = Arc::new(Mutex::new(vec![]));
@@ -63,11 +59,7 @@ fn main() -> Result<()> {
         let depth = depth.lock().await;
         files.sort_by_key(|a| a.iter().count());
         let param_path = PARAM_PATH.get().ok_or(anyhow!("Parse args error"))?;
-        let start = if param_path.is_none() {
-            0
-        } else {
-            param_path.iter().count()
-        };
+        let start = param_path.iter().count();
         if *depth > 0 {
             (start..*depth - 1).for_each(|i| {
                 files.sort_by(|a, b| {

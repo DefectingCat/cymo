@@ -184,7 +184,7 @@ pub async fn change_remote(
 ) -> Result<()> {
     // Collect path from params
     let param_path = PARAM_PATH.get().ok_or(anyhow!("Parse args error"))?;
-    if param_path.is_none() {
+    if param_path.is_file() {
         return Ok(());
     }
 
@@ -193,7 +193,7 @@ pub async fn change_remote(
         .components()
         .collect::<Vec<_>>()
         .into_iter()
-        .skip(param_path.iter().len())
+        .skip(param_path.parent().iter().len())
         .collect::<Vec<_>>();
 
     // The final remote path
@@ -283,16 +283,16 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
     let mut local = File::open(&path).await?;
     // Detect file type
     let mut magic_number = [0u8; 8];
-    let count = local.read(&mut magic_number).await;
-    local.read_exact(&mut magic_number).await?;
-    let mime_type = infer::get(&magic_number).map(|kind| kind.mime_type());
-    if mime_type.is_some() {
-        ftp_stream.transfer_type(FileType::Binary).await?;
-    } else {
-        ftp_stream
-            .transfer_type(FileType::Ascii(FormatControl::Default))
-            .await?;
-    }
+    // let count = local.read(&mut magic_number).await;
+    // local.read_exact(&mut magic_number).await?;
+    // let mime_type = infer::get(&magic_number).map(|kind| kind.mime_type());
+    // if mime_type.is_some() {
+    //     ftp_stream.transfer_type(FileType::Binary).await?;
+    // } else {
+    //     ftp_stream
+    //         .transfer_type(FileType::Ascii(FormatControl::Default))
+    //         .await?;
+    // }
 
     let mut local = File::open(&path).await?;
     // Stream file content to ftp server
