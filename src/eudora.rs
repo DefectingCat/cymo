@@ -302,14 +302,28 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
 }
 
 /// TODO maximum retry times
+/// TODO skip failed files
 #[async_recursion(?Send)]
 pub async fn upload(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path) -> Result<()> {
     match upload_files(ftp_stream, i, path).await {
         Ok(res) => Ok(res),
-        Err(_) => {
-            sleep(Duration::from_millis(3000)).await;
+        Err(err) => {
+            eprintln!("Thread {} upload {:?} failed, {}", i, path, err);
+            sleep_with_seconds(3).await;
             upload(ftp_stream, i, path).await
         }
+    }
+}
+
+/// Sleep current thread and print count
+///
+/// Argments:
+///
+/// - `duration`: duration for sleep, seconds
+async fn sleep_with_seconds(duration: usize) {
+    for i in 1..=duration {
+        println!("Will retry in {}s", duration - i);
+        sleep(Duration::from_secs(1)).await;
     }
 }
 

@@ -13,7 +13,7 @@ use suppaftp::AsyncFtpStream;
 use tokio::{runtime, spawn, sync::Mutex};
 
 use crate::args::Args;
-use crate::eudora::{connect_and_init, get_args, recursive_read_file, upload_files};
+use crate::eudora::{connect_and_init, get_args, recursive_read_file, upload};
 
 mod args;
 mod eudora;
@@ -148,7 +148,7 @@ fn main() -> Result<()> {
         let r = r.clone();
         let file_count = file_count.clone();
         let task = move || {
-            let rt = runtime::Builder::new_current_thread().build().unwrap();
+            let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
             let handle = rt.block_on(async {
                 let Args { server, .. } = get_args()?;
                 println!("Thread {} connecting {}", i, &server);
@@ -160,7 +160,7 @@ fn main() -> Result<()> {
                 // TODO add retry, add maximum retry times.
                 let mut thread_count = 0_usize;
                 for (count, path) in (r.recv()?).into_iter().enumerate() {
-                    upload_files(&mut ftp_stream, i, &path).await?;
+                    upload(&mut ftp_stream, i, &path).await?;
                     println!("Thread {} upload file {:?} success", i, &path);
                     thread_count = count
                 }
