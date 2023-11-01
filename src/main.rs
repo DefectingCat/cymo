@@ -128,18 +128,25 @@ fn main() -> Result<()> {
             (sender, len)
         };
         let (result, len) = rt.block_on(task);
-        // TODO retry, when files is empty, exit threads
-        let _ = result.map_err(|err| {
-            eprintln!(
-                "Send files to thread failed {:?}. {} files not send",
-                err, len
-            );
-        });
+        match result {
+            // TODO retry, when files is empty, exit threads
+            Ok(_) => {
+                println!("Total send {} files", len);
+            }
+            Err(err) => {
+                eprintln!(
+                    "Send files to thread failed {:?}. {} files not send",
+                    err, len
+                );
+            }
+        }
     };
     thread::spawn(task);
 
+    let file_count = Arc::new(std::sync::Mutex::new(0_usize));
     let thread_task = |i| {
         let r = r.clone();
+        let file_count = file_count.clone();
         let task = move || {
             let rt = runtime::Builder::new_current_thread().build().unwrap();
             let handle = rt.block_on(async {
@@ -150,13 +157,24 @@ fn main() -> Result<()> {
                 connect_and_init(&mut ftp_stream, i).await?;
 
                 // Receive files from main thread.
-                // TODO thread continue
-                // TODO add uploaded files count
-                for path in (r.recv()?).into_iter() {
+                // TODO add retry, add maximum retry times.
+                let mut thread_count = 0_usize;
+                for (count, path) in (r.recv()?).into_iter().enumerate() {
                     upload_files(&mut ftp_stream, i, &path).await?;
                     println!("Thread {} upload file {:?} success", i, &path);
+                    thread_count = count
                 }
                 ftp_stream.quit().await?;
+                thread_count += 1;
+                match file_count.lock() {
+                    Ok(mut file_count) => {
+                        *file_count += thread_count;
+                        println!("Thread {} uploaded {} files", i, thread_count);
+                    }
+                    Err(err) => {
+                        eprintln!("Thread {} write file cout failed {}", i, err);
+                    }
+                }
                 println!("Thread {} exiting", i);
                 AOk(())
             });
@@ -170,6 +188,15 @@ fn main() -> Result<()> {
     let threads = (1..cpus).map(thread_task).collect::<Vec<_>>();
     for thread in threads {
         thread.join().map_err(|err| anyhow!("{:?}", err))?;
+    }
+
+    match file_count.lock() {
+        Ok(count) => {
+            println!("Total upload {}", count);
+        }
+        Err(err) => {
+            println!("Main thread read file count failed {}", err);
+        }
     }
     Ok(())
 }
