@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Ok as AOk, Result};
 use async_recursion::async_recursion;
@@ -10,6 +11,7 @@ use suppaftp::AsyncFtpStream;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use tokio::{io, spawn};
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
 
@@ -259,7 +261,6 @@ async fn remote_mkdir(ftp_stream: &mut AsyncFtpStream, i: usize, remote: &str) -
 /// let current_remote = "/var/www/html";
 /// upload_files(&mut ftp_stream, i, &path, current_remote).await?;
 /// ```
-#[async_recursion(?Send)]
 pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path) -> Result<()> {
     // Current local file filename
     let filename = path
@@ -298,6 +299,18 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
     io::copy(&mut local, &mut remote).await?;
     ftp_stream.finalize_put_stream(remote.compat()).await?;
     Ok(())
+}
+
+/// TODO maximum retry times
+#[async_recursion(?Send)]
+pub async fn upload(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path) -> Result<()> {
+    match upload_files(ftp_stream, i, path).await {
+        Ok(res) => Ok(res),
+        Err(_) => {
+            sleep(Duration::from_millis(3000)).await;
+            upload(ftp_stream, i, path).await
+        }
+    }
 }
 
 #[cfg(test)]
