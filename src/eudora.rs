@@ -283,6 +283,7 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
     let mut local = File::open(&path).await?;
     // Detect file type
     let mut magic_number = [0u8; 8];
+    let count = local.read(&mut magic_number).await;
     local.read_exact(&mut magic_number).await?;
     let mime_type = infer::get(&magic_number).map(|kind| kind.mime_type());
     if mime_type.is_some() {

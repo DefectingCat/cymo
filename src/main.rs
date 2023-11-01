@@ -68,27 +68,29 @@ fn main() -> Result<()> {
         } else {
             param_path.iter().count()
         };
-        (start..*depth - 1).for_each(|i| {
-            files.sort_by(|a, b| {
-                let empty = PathBuf::new();
-                let child_a = a
-                    .parent()
-                    .unwrap_or(&empty)
-                    .components()
-                    .collect::<Vec<_>>();
-                let child_a = child_a.get(i);
-                let child_b = b
-                    .parent()
-                    .unwrap_or(&empty)
-                    .components()
-                    .collect::<Vec<_>>();
-                let child_b = child_b.get(i);
-                match (child_a, child_b) {
-                    (Some(a), Some(b)) => a.cmp(b),
-                    _ => Ordering::Equal,
-                }
-            })
-        });
+        if *depth > 0 {
+            (start..*depth - 1).for_each(|i| {
+                files.sort_by(|a, b| {
+                    let empty = PathBuf::new();
+                    let child_a = a
+                        .parent()
+                        .unwrap_or(&empty)
+                        .components()
+                        .collect::<Vec<_>>();
+                    let child_a = child_a.get(i);
+                    let child_b = b
+                        .parent()
+                        .unwrap_or(&empty)
+                        .components()
+                        .collect::<Vec<_>>();
+                    let child_b = child_b.get(i);
+                    match (child_a, child_b) {
+                        (Some(a), Some(b)) => a.cmp(b),
+                        _ => Ordering::Equal,
+                    }
+                })
+            });
+        }
         let len = files.len();
         println!("Find {} file(s)", len);
         AOk(())
@@ -148,11 +150,15 @@ fn main() -> Result<()> {
         let r = r.clone();
         let file_count = file_count.clone();
         let task = move || {
-            let rt = runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            let rt = runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
             let handle = rt.block_on(async {
                 let Args { server, .. } = get_args()?;
                 println!("Thread {} connecting {}", i, &server);
                 // TODO add server port configuration
+                // TODO read username and password in environment
                 let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
                 connect_and_init(&mut ftp_stream, i).await?;
 
