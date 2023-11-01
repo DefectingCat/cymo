@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Ok as AOk, Result};
-use futures::future::{try_join_all, BoxFuture};
-use futures::FutureExt;
+use async_recursion::async_recursion;
+use futures::future::try_join_all;
 use suppaftp::types::{FileType, FormatControl};
 use suppaftp::AsyncFtpStream;
 use tokio::fs::File;
@@ -62,39 +62,37 @@ pub fn get_args<'a>() -> Result<&'a Args> {
 /// - The `path` is neither a file nor a directory.
 /// - There is an error while reading the directory entries.
 /// - There is an error while creating or executing a task.
-pub fn recursive_read_file(
+#[async_recursion]
+pub async fn recursive_read_file(
     files: Arc<Mutex<Vec<PathBuf>>>,
     depth: Arc<Mutex<usize>>,
     path: PathBuf,
-) -> BoxFuture<'static, Result<()>> {
-    async move {
-        if path.is_file() {
-            let mut files = files.lock().await;
-            files.push(path);
-            return Ok(());
-        }
-        if path.is_dir() {
-            let dir = fs::read_dir(&path)?;
-            {
-                let mut d = depth.lock().await;
-                let len = &path.iter().count();
-                if *d < *len {
-                    *d = *len
-                }
-            }
-            try_join_all(dir.map(|path| {
-                let files = files.clone();
-                let depth = depth.clone();
-                spawn(async move {
-                    recursive_read_file(files, depth, path?.path()).await?;
-                    AOk(())
-                })
-            }))
-            .await?;
-        }
-        Ok(())
+) -> Result<()> {
+    if path.is_file() {
+        let mut files = files.lock().await;
+        files.push(path);
+        return Ok(());
     }
-    .boxed()
+    if path.is_dir() {
+        let dir = fs::read_dir(&path)?;
+        {
+            let mut d = depth.lock().await;
+            let len = &path.iter().count();
+            if *d < *len {
+                *d = *len
+            }
+        }
+        try_join_all(dir.map(|path| {
+            let files = files.clone();
+            let depth = depth.clone();
+            spawn(async move {
+                recursive_read_file(files, depth, path?.path()).await?;
+                AOk(())
+            })
+        }))
+        .await?;
+    }
+    Ok(())
 }
 
 /// Connects to an FTP server and changes to a target directory, and returns the current remote directory name.
@@ -261,6 +259,7 @@ async fn remote_mkdir(ftp_stream: &mut AsyncFtpStream, i: usize, remote: &str) -
 /// let current_remote = "/var/www/html";
 /// upload_files(&mut ftp_stream, i, &path, current_remote).await?;
 /// ```
+#[async_recursion(?Send)]
 pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path) -> Result<()> {
     // Current local file filename
     let filename = path
