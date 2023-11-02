@@ -284,13 +284,13 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
     // Detect file type
     let mut magic_number = [0u8; 8];
     if local.read_exact(&mut magic_number).await.is_ok() {
-        let mime_type = infer::get(&magic_number).map(|kind| kind.mime_type());
-        if mime_type.is_some() {
-            ftp_stream.transfer_type(FileType::Binary).await?;
-        } else {
+        let is_text = String::from_utf8(magic_number.into());
+        if is_text.is_ok() {
             ftp_stream
                 .transfer_type(FileType::Ascii(FormatControl::Default))
                 .await?;
+        } else {
+            ftp_stream.transfer_type(FileType::Binary).await?;
         }
     };
 
