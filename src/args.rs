@@ -44,4 +44,8 @@ pub struct Args {
     /// Retry times
     #[arg(long)]
     pub retry: Option<u32>,
+
+    /// Remote server port
+    #[arg(long, default_value_t = 21)]
+    pub port: u32,
 }

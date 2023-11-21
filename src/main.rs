@@ -153,11 +153,11 @@ fn main() -> Result<()> {
                 .build()
                 .unwrap();
             let handle = rt.block_on(async {
-                let Args { server, .. } = get_args()?;
-                println!("Thread {} connecting {}", i, &server);
-                // TODO add server port configuration
+                let Args { server, port, .. } = get_args()?;
+                let addr = format!("{}:{}", server, port);
+                println!("Thread {} connecting {}", i, &addr);
                 // TODO read username and password in environment
-                let mut ftp_stream = AsyncFtpStream::connect(format!("{}:21", server)).await?;
+                let mut ftp_stream = AsyncFtpStream::connect(addr).await?;
                 connect_and_init(&mut ftp_stream, i).await?;
 
                 let mut current_failed = vec![];
