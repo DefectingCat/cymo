@@ -239,7 +239,6 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
     Ok(())
 }
 
-/// TODO skip failed files
 /// TODO show file upload speed
 #[async_recursion(?Send)]
 pub async fn upload(
