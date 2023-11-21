@@ -1,19 +1,19 @@
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+
 use std::time::Duration;
 
-use anyhow::{anyhow, Ok as AOk, Result};
+use anyhow::{anyhow, Result};
 use async_recursion::async_recursion;
-use futures::future::try_join_all;
+
 use suppaftp::types::{FileType, FormatControl};
 use suppaftp::AsyncFtpStream;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use tokio::sync::Mutex;
+
+use tokio::io;
 use tokio::time::sleep;
-use tokio::{io, spawn};
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
+use walkdir::DirEntry;
 
 use crate::args::Args;
 use crate::{ARG, PARAM_PATH, REMOTE_PATH};
@@ -22,55 +22,12 @@ pub fn get_args<'a>() -> Result<&'a Args> {
     ARG.get().ok_or(anyhow!("Parse args error"))
 }
 
-/// Recursively reads all the files in a given directory and stores
-/// their paths in a shared data structure.
-///
-/// This function takes two parameters: `files` and `path`. The `files` parameter is an
-/// `Arc<Mutex<Vec<PathBuf>>>`, which is a thread-safe reference-counted pointer to a
-/// mutex-protected vector of file paths. The `path` parameter is a `PathBuf`,
-/// which is a type of owned file or directory path.
-///
-/// This function returns a `BoxFuture<'static, Result<()>>`, which is a type of heap-allocated
-/// asynchronous value that can be executed later and can return either an empty tuple or an error.
-///
-/// # Errors
-///
-/// This function may return an error if:
-///
-/// - The `path` is neither a file nor a directory.
-/// - There is an error while reading the directory entries.
-/// - There is an error while creating or executing a task.
-#[async_recursion]
-pub async fn recursive_read_file(
-    files: Arc<Mutex<Vec<PathBuf>>>,
-    depth: Arc<Mutex<usize>>,
-    path: PathBuf,
-) -> Result<()> {
-    if path.is_file() {
-        let mut files = files.lock().await;
-        files.push(path);
-        return Ok(());
-    }
-    if path.is_dir() {
-        let dir = fs::read_dir(&path)?;
-        {
-            let mut d = depth.lock().await;
-            let len = &path.iter().count();
-            if *d < *len {
-                *d = *len
-            }
-        }
-        try_join_all(dir.map(|path| {
-            let files = files.clone();
-            let depth = depth.clone();
-            spawn(async move {
-                recursive_read_file(files, depth, path?.path()).await?;
-                AOk(())
-            })
-        }))
-        .await?;
-    }
-    Ok(())
+pub fn is_hidden(entry: &DirEntry) -> bool {
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| s.starts_with('.'))
+        .unwrap_or(false)
 }
 
 /// Connects to an FTP server and changes to a target directory, and returns the current remote directory name.
@@ -273,50 +230,5 @@ async fn sleep_with_seconds(duration: usize, message: Option<String>) {
     for i in 1..=duration {
         println!("{}will retry in {}s", message, duration - i);
         sleep(Duration::from_secs(1)).await;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use tokio::fs;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn test_recursive_read_file() {
-        // Create a temporary test directory
-        let temp_dir = tempfile::tempdir().unwrap();
-        let test_path = temp_dir.path().to_path_buf();
-
-        // Create some test files and directories
-        let file1 = test_path.join("file1.txt");
-        let file2 = test_path.join("file2.txt");
-        let sub_dir = test_path.join("sub_dir");
-        let file3 = sub_dir.join("file3.txt");
-        fs::write(&file1, "Test file 1 content").await.unwrap();
-        fs::write(&file2, "Test file 2 content").await.unwrap();
-        fs::create_dir(&sub_dir).await.unwrap();
-        fs::write(&file3, "Test file 3 content").await.unwrap();
-
-        // Create an Arc<Mutex> to hold the collected file paths
-        let files: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
-        let depth = Arc::new(Mutex::new(0_usize));
-
-        // Call the recursive_read_file function
-        recursive_read_file(files.clone(), depth, test_path.clone())
-            .await
-            .expect("Failed to read files recursively");
-
-        // Lock the files mutex to access the collected paths
-        let files = files.lock().await;
-
-        // Check if the collected paths match the expected paths
-        assert_eq!(files.len(), 3);
-        assert!(files.contains(&file1));
-        assert!(files.contains(&file2));
-        assert!(files.contains(&file3));
-
-        // Clean up the temporary test directory
-        temp_dir.close().unwrap();
     }
 }

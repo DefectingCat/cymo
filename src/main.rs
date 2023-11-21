@@ -1,19 +1,18 @@
-use std::cmp::Ordering;
 use std::path::PathBuf;
-use std::process::exit;
+
 use std::sync::OnceLock;
 use std::{sync::Arc, thread};
 
-use anyhow::{anyhow, Context, Ok as AOk, Result};
+use anyhow::{anyhow, Ok as AOk, Result};
 use clap::Parser;
 use crossbeam_channel::unbounded;
-use futures::future::try_join_all;
-use glob::{glob, GlobResult};
+
 use suppaftp::AsyncFtpStream;
-use tokio::{runtime, spawn, sync::Mutex};
+use tokio::{runtime, sync::Mutex};
+use walkdir::WalkDir;
 
 use crate::args::Args;
-use crate::eudora::{connect_and_init, get_args, recursive_read_file, upload};
+use crate::eudora::{connect_and_init, get_args, is_hidden, upload};
 
 mod args;
 mod eudora;
@@ -30,67 +29,16 @@ fn main() -> Result<()> {
     PARAM_PATH.get_or_init(|| PathBuf::from(&args.local_path));
     REMOTE_PATH.get_or_init(|| PathBuf::from(&args.remote_path));
     let args = ARG.get_or_init(|| args);
+    let files = WalkDir::new(&args.local_path)
+        .into_iter()
+        .filter_entry(|e| !is_hidden(e))
+        .filter_map(|e| e.ok())
+        .map(|e| PathBuf::from(e.path()))
+        .filter(|e| e.is_file())
+        .collect::<Vec<_>>();
     // Find files
-    let files = Arc::new(Mutex::new(vec![]));
-    let mut files_count = 0;
-    // Local directory depth, params not included
-    let depth = Arc::new(Mutex::new(0_usize));
-
-    let main_rt = runtime::Builder::new_multi_thread().build()?;
-    let main_handle = main_rt.block_on(async {
-        let local_path = &args.local_path;
-        let local_path = glob(local_path)?;
-
-        let task = |path: GlobResult| {
-            let files = files.clone();
-            let depth = depth.clone();
-            let task = async move {
-                let path = path.with_context(|| "Read file failed")?;
-                recursive_read_file(files.clone(), depth, path).await?;
-                AOk(())
-            };
-            spawn(task)
-        };
-        try_join_all(local_path.into_iter().map(task)).await?;
-
-        let mut files = files.lock().await;
-        if files.len() == 0 {
-            println!("Local target file is empty no not exist.");
-            exit(0);
-        }
-        let depth = depth.lock().await;
-        files.sort_by_key(|a| a.iter().count());
-        let param_path = PARAM_PATH.get().ok_or(anyhow!("Parse args error"))?;
-        let start = param_path.iter().count();
-        if *depth > 0 {
-            (start..*depth - 1).for_each(|i| {
-                files.sort_by(|a, b| {
-                    let empty = PathBuf::new();
-                    let child_a = a
-                        .parent()
-                        .unwrap_or(&empty)
-                        .components()
-                        .collect::<Vec<_>>();
-                    let child_a = child_a.get(i);
-                    let child_b = b
-                        .parent()
-                        .unwrap_or(&empty)
-                        .components()
-                        .collect::<Vec<_>>();
-                    let child_b = child_b.get(i);
-                    match (child_a, child_b) {
-                        (Some(a), Some(b)) => a.cmp(b),
-                        _ => Ordering::Equal,
-                    }
-                })
-            });
-        }
-        files_count = files.len();
-        println!("Find {} file(s)", files_count);
-        AOk(())
-    });
-    main_handle?;
-    main_rt.shutdown_background();
+    let files_count = files.len();
+    let files = Arc::new(Mutex::new(files));
 
     // TODO add custom thread number
     let cpus = thread::available_parallelism()?.get();
@@ -175,7 +123,6 @@ fn main() -> Result<()> {
                         }
                     }
                 }
-                ftp_stream.quit().await?;
                 if thread_count != 0 {
                     thread_count += 1;
                 }
@@ -197,6 +144,7 @@ fn main() -> Result<()> {
                         })?;
                 }
                 println!("Thread {} exiting", i);
+                ftp_stream.quit().await?;
                 AOk(())
             });
             if let Err(err) = handle {
