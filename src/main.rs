@@ -158,7 +158,7 @@ fn main() -> Result<()> {
                 // TODO add retry, add maximum retry times.
                 let mut thread_count = 0_usize;
                 for (count, path) in (r.recv()?).into_iter().enumerate() {
-                    upload(&mut ftp_stream, i, &path).await?;
+                    upload(&mut ftp_stream, i, &path, 0).await?;
                     println!("Thread {} upload file {:?} success", i, &path);
                     thread_count = count
                 }

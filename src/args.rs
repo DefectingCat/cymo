@@ -4,21 +4,6 @@ use clap::Parser;
 ///
 /// The `Args` struct represents the command-line arguments for the Cymo tool, which is used
 /// for multi-threaded FTP file uploads.
-///
-/// # Examples
-///
-/// ```
-/// use std::path::PathBuf;
-/// use cymo_tool::Args;
-///
-/// let args = Args {
-///     remote_path: PathBuf::from("/remote/ftp/directory"),
-///     local_path: "/local/directory".to_string(),
-/// };
-///
-/// println!("Remote Path: {:?}", args.remote_path);
-/// println!("Local Path: {:?}", args.local_path);
-/// ```
 #[derive(Parser, Debug)]
 #[command(
     author,
@@ -55,4 +40,8 @@ pub struct Args {
     /// The password for authenticating with the FTP server (optional).
     #[arg(short, long)]
     pub password: Option<String>,
+
+    /// Retry times
+    #[arg(short, long)]
+    pub retry: Option<u32>,
 }

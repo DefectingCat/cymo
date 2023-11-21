@@ -33,30 +33,6 @@ pub fn get_args<'a>() -> Result<&'a Args> {
 /// This function returns a `BoxFuture<'static, Result<()>>`, which is a type of heap-allocated
 /// asynchronous value that can be executed later and can return either an empty tuple or an error.
 ///
-/// # Examples
-///
-/// ```
-/// use std::path::PathBuf;
-/// use std::sync::{Arc, Mutex};
-/// use futures::{future::BoxFuture, executor::block_on};
-/// use tokio::fs;
-///
-/// # [tokio::main
-/// async fn main () -> Result< (), Box<dyn std::error::Error>> {
-///     // Create a shared data structure to store the file paths
-///     let files = Arc::new(Mutex::new(Vec::new()));
-///     // Create a path to the current directory
-///     let path = PathBuf::from(".");
-///     // Call the recursive_read_file function and get the future
-///     let future = recursive_read_file(files.clone(), path);
-///     // Await the future to complete
-///     future.await?;
-///     // Print the file paths
-///     println!("{:?}", files.lock().unwrap());
-///     Ok(())
-/// }
-/// ```
-///
 /// # Errors
 ///
 /// This function may return an error if:
@@ -118,20 +94,6 @@ pub async fn recursive_read_file(
 /// * `password` - An optional reference to a string that contains the password for authentication.
 /// * `remote_path` - A reference to a string that contains the remote path to change to.
 ///
-/// # Examples
-///
-/// ```rust
-/// use anyhow::Result;
-/// use suppaftp::AsyncFtpStream;
-///
-/// async fn example() -> Result<()> {
-///     let mut ftp_stream = AsyncFtpStream::connect("127.0.0.1:21").await?;
-///     let current_remote = connect_and_init(&mut ftp_stream, 0, "127.0.0.1", Some("anonymous"), Some("anonymous"), "/home/user").await?;
-///     println!("Current remote directory: {}", current_remote);
-///     Ok(())
-/// }
-/// ```
-///
 /// # Errors
 ///
 /// This function may return an error if any of the FTP operations fail, such as connecting, logging
@@ -163,19 +125,6 @@ pub async fn connect_and_init(ftp_stream: &mut AsyncFtpStream, i: usize) -> Resu
 /// This function takes a mutable reference to an `AsyncFtpStream`, an index `i` that identifies the thread, a reference to a `Path` that represents the local directory, and a reference to a `str` that represents the current remote directory. It returns a `Result<()>` that indicates whether the operation was successful or not.
 ///
 /// This function first extracts the components of the local directory and skips the first one, which is assumed to be the root directory. It then appends these components to the current remote directory and tries to change to it using the `cwd` method of the `AsyncFtpStream`. If the remote directory does not exist, it creates it using the `mkdir` method and then changes to it. It prints a message to indicate the success of the operation.
-///
-/// # Examples
-///
-/// ```no_run
-/// use async_ftp::AsyncFtpStream;
-/// use std::path::Path;
-///
-/// let mut ftp_stream = AsyncFtpStream::connect("127.0.0.1:21").await?;
-/// let i = 0;
-/// let path = Path::new("/home/user/foo/bar/baz.txt");
-/// let current_remote = "/var/www/html";
-/// change_remote(&mut ftp_stream, i, path.parent().unwrap(), current_remote).await?;
-/// ```
 pub async fn change_remote(
     ftp_stream: &mut AsyncFtpStream,
     i: usize,
@@ -249,18 +198,6 @@ async fn remote_mkdir(ftp_stream: &mut AsyncFtpStream, i: usize, remote: &str) -
 ///
 /// This function first extracts the file name and the parent directories of the local file. It then calls the `change_remote` function to ensure that the remote directory exists and matches the local directory. It then opens the local file using `File::open` and creates a data stream for uploading using `put_with_stream`. It copies the bytes from the local file to the data stream using `io::copy` and finalizes the upload using `finalize_put_stream`. It prints a message to indicate the success of the operation.
 ///
-/// # Examples
-///
-/// ```no_run
-/// use async_ftp::AsyncFtpStream;
-/// use std::path::Path;
-///
-/// let mut ftp_stream = AsyncFtpStream::connect("127.0.0.1:21").await?;
-/// let i = 0;
-/// let path = Path::new("/home/user/foo/bar/baz.txt");
-/// let current_remote = "/var/www/html";
-/// upload_files(&mut ftp_stream, i, &path, current_remote).await?;
-/// ```
 pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path) -> Result<()> {
     // Current local file filename
     let filename = path
@@ -302,17 +239,30 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
     Ok(())
 }
 
-/// TODO maximum retry times
 /// TODO skip failed files
 /// TODO show file upload speed
 #[async_recursion(?Send)]
-pub async fn upload(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path) -> Result<()> {
+pub async fn upload(
+    ftp_stream: &mut AsyncFtpStream,
+    i: usize,
+    path: &Path,
+    retry_times: u32,
+) -> Result<()> {
+    let Args { retry, .. } = get_args()?;
     match upload_files(ftp_stream, i, path).await {
         Ok(res) => Ok(res),
         Err(err) => {
             eprintln!("Thread {} upload {:?} failed, {}", i, path, err);
-            sleep_with_seconds(3).await;
-            upload(ftp_stream, i, path).await
+            match retry {
+                Some(times) => {
+                    if retry_times >= *times {
+                        return Err(err);
+                    }
+                    sleep_with_seconds(3, format!("Thread {} file {:?}", i, path).into()).await;
+                    upload(ftp_stream, i, path, retry_times + 1).await
+                }
+                None => Err(err),
+            }
         }
     }
 }
@@ -322,9 +272,10 @@ pub async fn upload(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path) -> R
 /// Argments:
 ///
 /// - `duration`: duration for sleep, seconds
-async fn sleep_with_seconds(duration: usize) {
+async fn sleep_with_seconds(duration: usize, message: Option<String>) {
+    let message = message.map(|m| format!("{} ", m)).unwrap_or("".into());
     for i in 1..=duration {
-        println!("Will retry in {}s", duration - i);
+        println!("{}will retry in {}s", message, duration - i);
         sleep(Duration::from_secs(1)).await;
     }
 }
