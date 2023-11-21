@@ -42,6 +42,6 @@ pub struct Args {
     pub password: Option<String>,
 
     /// Retry times
-    #[arg(short, long)]
+    #[arg(long)]
     pub retry: Option<u32>,
 }

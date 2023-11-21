@@ -30,7 +30,9 @@ fn main() -> Result<()> {
     PARAM_PATH.get_or_init(|| PathBuf::from(&args.local_path));
     REMOTE_PATH.get_or_init(|| PathBuf::from(&args.remote_path));
     let args = ARG.get_or_init(|| args);
+    // Find files
     let files = Arc::new(Mutex::new(vec![]));
+    let mut files_count = 0;
     // Local directory depth, params not included
     let depth = Arc::new(Mutex::new(0_usize));
 
@@ -83,8 +85,8 @@ fn main() -> Result<()> {
                 })
             });
         }
-        let len = files.len();
-        println!("Find {} file(s)", len);
+        files_count = files.len();
+        println!("Find {} file(s)", files_count);
         AOk(())
     });
     main_handle?;
@@ -183,6 +185,7 @@ fn main() -> Result<()> {
                         println!("Thread {} uploaded {} files", i, thread_count);
                     })
                     .map_err(|err| anyhow!("Thread {} write file cout failed {}", i, err))?;
+                dbg!(&current_failed);
                 if !current_failed.is_empty() {
                     failed_files
                         .lock()
@@ -216,8 +219,8 @@ fn main() -> Result<()> {
         .lock()
         .map_err(|err| anyhow!("Main thread read file count failed {}", err))?;
     println!(
-        "Total upload {} file(s), {} file(s) failed",
-        count, failed_count
+        "Total find {} file(s) upload {} file(s), {} file(s) failed",
+        files_count, count, failed_count
     );
     Ok(())
 }
