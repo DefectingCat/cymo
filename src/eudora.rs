@@ -248,22 +248,19 @@ pub async fn upload(
     retry_times: u32,
 ) -> Result<()> {
     let Args { retry, .. } = get_args()?;
-    match upload_files(ftp_stream, i, path).await {
+    return match upload_files(ftp_stream, i, path).await {
         Ok(res) => Ok(res),
-        Err(err) => {
-            eprintln!("Thread {} upload {:?} failed, {}", i, path, err);
-            match retry {
-                Some(times) => {
-                    if retry_times >= *times {
-                        return Err(err);
-                    }
-                    sleep_with_seconds(3, format!("Thread {} file {:?}", i, path).into()).await;
-                    upload(ftp_stream, i, path, retry_times + 1).await
+        Err(err) => match retry {
+            Some(times) => {
+                if retry_times >= *times {
+                    return Err(err);
                 }
-                None => Err(err),
+                sleep_with_seconds(3, format!("Thread {} file {:?}", i, path).into()).await;
+                upload(ftp_stream, i, path, retry_times + 1).await
             }
-        }
-    }
+            None => Err(err),
+        },
+    };
 }
 
 /// Sleep current thread and print count

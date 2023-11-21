@@ -166,10 +166,11 @@ fn main() -> Result<()> {
                 for (count, path) in (r.recv()?).into_iter().enumerate() {
                     match upload(&mut ftp_stream, i, &path, 0).await {
                         Ok(_) => {
-                            println!("Thread {} upload file {:?} success", i, &path);
+                            println!("Thread {} upload {:?} success", i, &path);
                             thread_count = count
                         }
-                        Err(_) => {
+                        Err(err) => {
+                            eprintln!("Thread {} upload {:?} failed, {}", i, path, err);
                             current_failed.push(path);
                         }
                     }
@@ -185,7 +186,6 @@ fn main() -> Result<()> {
                         println!("Thread {} uploaded {} files", i, thread_count);
                     })
                     .map_err(|err| anyhow!("Thread {} write file cout failed {}", i, err))?;
-                dbg!(&current_failed);
                 if !current_failed.is_empty() {
                     failed_files
                         .lock()
