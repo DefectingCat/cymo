@@ -55,7 +55,10 @@ pub fn is_hidden(entry: &DirEntry) -> bool {
 ///
 /// This function may return an error if any of the FTP operations fail, such as connecting, logging
 /// in, or changing directory. The error will contain the details of the failure.
-pub async fn connect_and_init(ftp_stream: &mut AsyncFtpStream, i: usize) -> Result<()> {
+pub async fn connect_and_init(
+    ftp_stream: Result<&mut AsyncFtpStream, &mut anyhow::Error>,
+    i: usize,
+) -> Result<()> {
     let Args {
         username,
         password,
@@ -63,6 +66,7 @@ pub async fn connect_and_init(ftp_stream: &mut AsyncFtpStream, i: usize) -> Resu
         server,
         ..
     } = get_args()?;
+    let ftp_stream = ftp_stream.map_err(|err| anyhow!("{}", err))?;
     println!("Thread {} connect to {} success", i, server);
     if let (Some(username), Some(password)) = (&username, &password) {
         ftp_stream.login(username, password).await?;

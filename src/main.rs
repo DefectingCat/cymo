@@ -108,14 +108,23 @@ fn main() -> Result<()> {
                 let addr = format!("{}:{}", server, port);
                 println!("Thread {} connecting {}", i, &addr);
                 // TODO read username and password in environment
-                let mut ftp_stream = AsyncFtpStream::connect(addr).await?;
-                connect_and_init(&mut ftp_stream, i).await?;
+                let mut ftp_stream = AsyncFtpStream::connect(addr).await.map_err(|err| {
+                    eprintln!("Thread {} connnect failed {}", i, err);
+                    anyhow!("{}", err)
+                });
+                let _ = connect_and_init(ftp_stream.as_mut(), i).await;
 
                 let mut current_failed = vec![];
                 // Receive files from main thread.
                 let mut thread_count = 0_usize;
                 for (count, path) in (r.recv()?).into_iter().enumerate() {
-                    match upload(&mut ftp_stream, i, &path, 0).await {
+                    let ftp_stream = if let Ok(stream) = ftp_stream.as_mut() {
+                        stream
+                    } else {
+                        current_failed.push(path);
+                        continue;
+                    };
+                    match upload(ftp_stream, i, &path, 0).await {
                         Ok(_) => {
                             println!("Thread {} upload {:?} success", i, &path);
                             thread_count = count
@@ -132,6 +141,9 @@ fn main() -> Result<()> {
                 file_count
                     .lock()
                     .map(|mut file_count| {
+                        if thread_count == 0 {
+                            return;
+                        }
                         *file_count += thread_count;
                         println!("Thread {} uploaded {} files", i, thread_count);
                     })
@@ -147,7 +159,7 @@ fn main() -> Result<()> {
                         })?;
                 }
                 println!("Thread {} exiting", i);
-                ftp_stream.quit().await?;
+                ftp_stream?.quit().await?;
                 AOk(())
             });
             if let Err(err) = handle {
