@@ -40,8 +40,11 @@ fn main() -> Result<()> {
     let files_count = files.len();
     let files = Arc::new(Mutex::new(files));
 
-    // TODO add custom thread number
-    let cpus = thread::available_parallelism()?.get();
+    // One more thread for send task for others
+    let cpus = args
+        .thread
+        .unwrap_or(thread::available_parallelism()?.get())
+        + 1;
     // This channel used by send all files to be upload to child threads
     let (s, r) = unbounded();
     // This thread prepare each threads files to upload.

@@ -48,4 +48,8 @@ pub struct Args {
     /// Remote server port
     #[arg(long, default_value_t = 21)]
     pub port: u32,
+
+    /// Specific thread numbers
+    #[arg(short, long)]
+    pub thread: Option<usize>,
 }
