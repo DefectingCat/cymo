@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.5] - 2023-11-23
+
+### Added
+
+-   Set thread number from args.
+
+### Fixed
+
+-   File count error when connect failed.
+-   Refactor files collector in target directory with `Walkdir`.
+
 ## [0.2.5] - 2023-11-21
 
 ### Added
