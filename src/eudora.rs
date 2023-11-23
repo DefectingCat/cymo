@@ -140,7 +140,7 @@ pub async fn change_remote(
     Ok(())
 }
 
-async fn remote_mkdir(ftp_stream: &mut AsyncFtpStream, i: usize, remote: &str) -> Result<()> {
+pub async fn remote_mkdir(ftp_stream: &mut AsyncFtpStream, i: usize, remote: &str) -> Result<()> {
     // Create or change to it.
     match ftp_stream.cwd(&remote).await {
         Ok(_) => {
@@ -148,7 +148,6 @@ async fn remote_mkdir(ftp_stream: &mut AsyncFtpStream, i: usize, remote: &str) -
             println!("Thread {} change directory to {} success", i, remote);
         }
         Err(_) => {
-            // TODO if create failed, may other thread created, try to into it.
             ftp_stream.mkdir(&remote).await?;
             println!("Thread {} create directory {} success", i, remote);
             ftp_stream.cwd(&remote).await?;

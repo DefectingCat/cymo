@@ -12,7 +12,7 @@ use tokio::{runtime, sync::Mutex};
 use walkdir::WalkDir;
 
 use crate::args::Args;
-use crate::eudora::{connect_and_init, get_args, is_hidden, upload};
+use crate::eudora::{connect_and_init, get_args, is_hidden, remote_mkdir, upload};
 
 mod args;
 mod eudora;
@@ -29,13 +29,14 @@ fn main() -> Result<()> {
     PARAM_PATH.get_or_init(|| PathBuf::from(&args.local_path));
     REMOTE_PATH.get_or_init(|| PathBuf::from(&args.remote_path));
     let args = ARG.get_or_init(|| args);
-    let files = WalkDir::new(&args.local_path)
+    let mut files = WalkDir::new(&args.local_path)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| !is_hidden(e))
         .map(|e| PathBuf::from(e.path()))
         .filter(|e| e.is_file())
         .collect::<Vec<_>>();
+    files.sort_by_key(|a| a.components().count());
     // Find files
     let files_count = files.len();
     let files = Arc::new(Mutex::new(files));
@@ -52,7 +53,60 @@ fn main() -> Result<()> {
     let task = move || {
         let rt = runtime::Builder::new_current_thread().build().unwrap();
         let task = async {
+            let Args {
+                server,
+                port,
+                local_path,
+                remote_path,
+                ..
+            } = get_args()?;
+            let addr = format!("{}:{}", server, port);
+            let mut ftp_stream = AsyncFtpStream::connect(addr).await.map_err(|err| {
+                eprintln!("Thread main connnect failed {}", err);
+                anyhow!("{}", err)
+            });
+            let _ = connect_and_init(ftp_stream.as_mut(), 0).await;
+            let mut ftp_stream = ftp_stream?;
+
             let mut files = files.lock().await;
+            // All element in files is files, so can use parent.
+            // Create all parent folders.
+            let all_parents: Vec<_> =
+                files
+                    .iter()
+                    .fold(vec![], |mut prev: Vec<_>, cur| -> Vec<PathBuf> {
+                        let parent = cur
+                            .parent()
+                            .map(|parent| {
+                                parent
+                                    .components()
+                                    .skip(PathBuf::from(local_path).parent().into_iter().len())
+                            })
+                            .filter(|p| p.clone().count() > 0)
+                            .map(|p| p.collect::<PathBuf>());
+                        if let Some(p) = parent {
+                            if prev.contains(&p) {
+                                return prev;
+                            }
+                            let components = p.components().collect::<Vec<_>>();
+                            for index in 1..=components.len() {
+                                let path = &components[..index].iter().fold(
+                                    PathBuf::new(),
+                                    |mut child, cur| {
+                                        child.push(PathBuf::from(cur));
+                                        child
+                                    },
+                                );
+                                prev.push(path.clone());
+                            }
+                        }
+                        prev
+                    });
+            for parent in all_parents {
+                let mut remote = PathBuf::from(&remote_path);
+                remote.push(parent);
+                remote_mkdir(&mut ftp_stream, 0, &remote.to_string_lossy()).await?;
+            }
             // Total files length
             let len = files.len();
             // Div by cpu nums - 1
@@ -73,9 +127,9 @@ fn main() -> Result<()> {
                     AOk(())
                 })
                 .collect::<Result<Vec<_>>>();
-            (sender, len)
+            AOk((sender, len))
         };
-        let (result, len) = rt.block_on(task);
+        let (result, len) = rt.block_on(task).unwrap();
         match result {
             // TODO retry, when files is empty, exit threads
             Ok(_) => {
