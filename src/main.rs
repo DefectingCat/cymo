@@ -75,13 +75,21 @@ fn main() -> Result<()> {
                 files
                     .iter()
                     .fold(vec![], |mut prev: Vec<_>, cur| -> Vec<PathBuf> {
+                        let local_path = PathBuf::from(local_path);
+                        let skip_count = local_path
+                            .parent()
+                            .unwrap_or(&PathBuf::new())
+                            .components()
+                            .count();
+                        let skip_count =
+                            if local_path.is_dir() && local_path.components().count() == 1 {
+                                1
+                            } else {
+                                skip_count
+                            };
                         let parent = cur
                             .parent()
-                            .map(|parent| {
-                                parent
-                                    .components()
-                                    .skip(PathBuf::from(local_path).parent().into_iter().len())
-                            })
+                            .map(|parent| parent.components().skip(skip_count))
                             .filter(|p| p.clone().count() > 0)
                             .map(|p| p.collect::<PathBuf>());
                         if let Some(p) = parent {
