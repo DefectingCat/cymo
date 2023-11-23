@@ -120,22 +120,15 @@ pub async fn change_remote(
         remote_mkdir(ftp_stream, i, &remote_path.to_string_lossy()).await?;
         return Ok(());
     }
-    for index in 0..=len {
-        let local_path = &parents[..index]
-            .iter()
-            .fold(PathBuf::new(), |mut prev, cur| {
-                prev.push(PathBuf::from(cur));
-                prev
-            });
-        // Current remote directory
-        let mut remote = PathBuf::from(&remote_path);
-        remote.push(local_path);
-        let remote = remote.to_string_lossy();
-        // Current local directory
-        if local_path.to_string_lossy().len() != 0 {
-            // Create or change to it.
-            remote_mkdir(ftp_stream, i, &remote).await?;
-        }
+    let local_path = &parents.iter().collect::<PathBuf>();
+    // Current remote directory
+    let mut remote = PathBuf::from(&remote_path);
+    remote.push(local_path);
+    let remote = remote.to_string_lossy();
+    // Current local directory
+    if local_path.to_string_lossy().len() != 0 {
+        // Create or change to it.
+        remote_mkdir(ftp_stream, i, &remote).await?;
     }
     Ok(())
 }
@@ -184,7 +177,7 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
     // TODO replace file
     let mut local = File::open(&path).await?;
     // Detect file type
-    let mut magic_number = [0u8; 8];
+    let mut magic_number = [0u8; 16];
     if local.read_exact(&mut magic_number).await.is_ok() {
         let is_text = String::from_utf8(magic_number.into());
         if is_text.is_ok() {
