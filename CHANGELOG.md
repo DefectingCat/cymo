@@ -1,6 +1,15 @@
 # Changelog
 
-## [0.2.5] - 2023-11-23
+## [0.2.7] - 2023-11-23
+
+### Fixed
+
+-   Create remote directory failed when other threads created it.
+-   Change back to base remote directory failed.
+-   WASM file regconize as text file.
+-   Count local path parent length error.
+
+## [0.2.6] - 2023-11-23
 
 ### Added
 
