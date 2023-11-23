@@ -31,8 +31,8 @@ fn main() -> Result<()> {
     let args = ARG.get_or_init(|| args);
     let files = WalkDir::new(&args.local_path)
         .into_iter()
-        .filter_entry(|e| !is_hidden(e))
         .filter_map(|e| e.ok())
+        .filter(|e| !is_hidden(e))
         .map(|e| PathBuf::from(e.path()))
         .filter(|e| e.is_file())
         .collect::<Vec<_>>();
@@ -41,6 +41,7 @@ fn main() -> Result<()> {
     let files = Arc::new(Mutex::new(files));
 
     // One more thread for send task for others
+    // TODO if file count less than cpu numbers, create threads same as file count
     let cpus = args
         .thread
         .unwrap_or(thread::available_parallelism()?.get())
@@ -127,16 +128,13 @@ fn main() -> Result<()> {
                     match upload(ftp_stream, i, &path, 0).await {
                         Ok(_) => {
                             println!("Thread {} upload {:?} success", i, &path);
-                            thread_count = count
+                            thread_count = count + 1;
                         }
                         Err(err) => {
                             eprintln!("Thread {} upload {:?} failed, {}", i, path, err);
                             current_failed.push(path);
                         }
                     }
-                }
-                if thread_count != 0 {
-                    thread_count += 1;
                 }
                 file_count
                     .lock()

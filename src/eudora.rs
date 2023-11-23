@@ -116,6 +116,10 @@ pub async fn change_remote(
     }
 
     let len = parents.len();
+    if len == 0 {
+        remote_mkdir(ftp_stream, i, &remote_path.to_string_lossy()).await?;
+        return Ok(());
+    }
     for index in 0..=len {
         let local_path = &parents[..index]
             .iter()
@@ -144,6 +148,7 @@ async fn remote_mkdir(ftp_stream: &mut AsyncFtpStream, i: usize, remote: &str) -
             println!("Thread {} change directory to {} success", i, remote);
         }
         Err(_) => {
+            // TODO if create failed, may other thread created, try to into it.
             ftp_stream.mkdir(&remote).await?;
             println!("Thread {} create directory {} success", i, remote);
             ftp_stream.cwd(&remote).await?;
