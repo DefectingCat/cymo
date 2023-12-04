@@ -20,7 +20,7 @@ esac
 echo "$arch$OS"
 
 function detectCurl() {
-    if !(command -v curl >/dev/null 2>&1); then
+    if ! command -v curl &>/dev/null; then
         echo "curl does not exist"
         exit 1
     fi
