@@ -1,18 +1,17 @@
-use std::path::PathBuf;
-
-use std::sync::OnceLock;
-use std::{sync::Arc, thread};
+use crate::args::Args;
+use crate::eudora::{connect_and_init, get_args, is_hidden, remote_mkdir, upload};
 
 use anyhow::{anyhow, Ok as AOk, Result};
 use clap::Parser;
 use crossbeam_channel::unbounded;
-
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex as StdMutex, OnceLock},
+    thread,
+};
 use suppaftp::AsyncFtpStream;
 use tokio::{runtime, sync::Mutex};
 use walkdir::WalkDir;
-
-use crate::args::Args;
-use crate::eudora::{connect_and_init, get_args, is_hidden, remote_mkdir, upload};
 
 mod args;
 mod eudora;
@@ -154,9 +153,9 @@ fn main() -> Result<()> {
     thread::spawn(task);
 
     // All threads total uploads count
-    let file_count = Arc::new(std::sync::Mutex::new(0_usize));
+    let file_count = Arc::new(StdMutex::new(0_usize));
     // All threads failed files
-    let failed_files = Arc::new(std::sync::Mutex::new(Vec::<PathBuf>::new()));
+    let failed_files = Arc::new(StdMutex::new(Vec::<PathBuf>::new()));
     let thread_task = |i| {
         let r = r.clone();
         let file_count = file_count.clone();

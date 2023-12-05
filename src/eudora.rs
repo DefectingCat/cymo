@@ -1,22 +1,19 @@
-use std::path::{Path, PathBuf};
-
-use std::time::Duration;
+use crate::args::Args;
+use crate::{ARG, PARAM_PATH, REMOTE_PATH};
 
 use anyhow::{anyhow, Result};
 use async_recursion::async_recursion;
-
-use suppaftp::types::{FileType, FormatControl};
-use suppaftp::AsyncFtpStream;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
-
-use tokio::io;
-use tokio::time::sleep;
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
+use suppaftp::{
+    types::{FileType, FormatControl},
+    AsyncFtpStream,
+};
+use tokio::{fs::File, io, io::AsyncReadExt, time::sleep};
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
 use walkdir::DirEntry;
-
-use crate::args::Args;
-use crate::{ARG, PARAM_PATH, REMOTE_PATH};
 
 pub fn get_args<'a>() -> Result<&'a Args> {
     ARG.get().ok_or(anyhow!("Parse args error"))
