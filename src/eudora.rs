@@ -11,6 +11,7 @@ use suppaftp::{
     types::{FileType, FormatControl},
     AsyncFtpStream,
 };
+use tokio::time::Instant;
 use tokio::{fs::File, io, io::AsyncReadExt, time::sleep};
 use tokio_util::compat::{FuturesAsyncWriteCompatExt, TokioAsyncReadCompatExt};
 use walkdir::DirEntry;
@@ -28,15 +29,6 @@ pub fn is_hidden(entry: &DirEntry) -> bool {
 }
 
 /// Connects to an FTP server and changes to a target directory, and returns the current remote directory name.
-///
-/// This function takes a mutable reference to an `AsyncFtpStream`, which is used to perform
-/// asynchronous FTP operations. It also takes the index of the thread that is calling the function,
-/// the address of the server, the optional username and password for authentication, and the remote
-/// path to change to.
-///
-/// The function prints some messages to indicate the progress of the connection, login, and directory
-/// change. It also prints the welcome message from the server, if any. It returns a `Result<String>`
-/// that contains the current remote directory name, or an error if any of the FTP operations fail.
 ///
 /// # Arguments
 ///
@@ -130,6 +122,8 @@ pub async fn change_remote(
     Ok(())
 }
 
+/// Change into target remote directory.
+/// And create it if not exist.
 pub async fn remote_mkdir(ftp_stream: &mut AsyncFtpStream, i: usize, remote: &str) -> Result<()> {
     // Create or change to it.
     match ftp_stream.cwd(&remote).await {
@@ -171,7 +165,7 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
     }
     // Upload files
     // https://docs.rs/suppaftp/latest/suppaftp/types/enum.FileType.html#
-    // TODO replace file
+    // TODO add replace file param
     let mut local = File::open(&path).await?;
     // Detect file type
     let mut magic_number = [0u8; 16];
@@ -186,11 +180,24 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
         }
     };
 
+    println!("Thread {} starting upload {:?}", i, &path);
     let mut local = File::open(&path).await?;
+    let size_kb = local.metadata().await?.len() / 1000;
+    let now = Instant::now();
     // Stream file content to ftp server
     let mut remote = ftp_stream.put_with_stream(filename).await?.compat_write();
     io::copy(&mut local, &mut remote).await?;
     ftp_stream.finalize_put_stream(remote.compat()).await?;
+    // duration in milliseconds
+    let duration = (now.elapsed().as_millis() as f64).round();
+    // kb per second
+    let speed = (size_kb as f64 / duration) * 1000.0;
+    let speed = if speed > 1024.0 {
+        format!("{:.1}MB/s", (speed / 1000.0).round())
+    } else {
+        format!("{:.1}KB/s", speed.round())
+    };
+    println!("Thread {} upload {:?} success {}", i, &path, speed);
     Ok(())
 }
 

@@ -158,7 +158,6 @@ fn main() -> Result<()> {
                     };
                     match upload(ftp_stream, i, &path, 0).await {
                         Ok(_) => {
-                            println!("Thread {} upload {:?} success", i, &path);
                             thread_count = count + 1;
                         }
                         Err(err) => {
