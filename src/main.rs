@@ -36,7 +36,7 @@ fn main() -> Result<()> {
         .filter(|e| e.is_file())
         .collect::<Vec<_>>();
     files.sort_by_key(|a| a.components().count());
-    // Find files
+    // Found files
     let files_count = files.len();
     let files = Arc::new(Mutex::new(files));
 
@@ -46,6 +46,12 @@ fn main() -> Result<()> {
         .thread
         .unwrap_or(thread::available_parallelism()?.get())
         + 1;
+    let cpus = if files_count < cpus {
+        files_count + 1
+    } else {
+        cpus
+    };
+
     // This channel used by send all files to be upload to child threads
     let (s, r) = unbounded();
     // This thread prepare each threads files to upload.
@@ -70,45 +76,42 @@ fn main() -> Result<()> {
             let mut files = files.lock().await;
             // All element in files is files, so can use parent.
             // Create all parent folders.
-            let all_parents: Vec<_> =
-                files
-                    .iter()
-                    .fold(vec![], |mut prev: Vec<_>, cur| -> Vec<PathBuf> {
-                        let local_path = PathBuf::from(local_path);
-                        let skip_count = local_path
-                            .parent()
-                            .unwrap_or(&PathBuf::new())
-                            .components()
-                            .count();
-                        let skip_count =
-                            if local_path.is_dir() && local_path.components().count() == 1 {
-                                1
-                            } else {
-                                skip_count
-                            };
-                        let parent = cur
-                            .parent()
-                            .map(|parent| parent.components().skip(skip_count))
-                            .filter(|p| p.clone().count() > 0)
-                            .map(|p| p.collect::<PathBuf>());
-                        if let Some(p) = parent {
-                            if prev.contains(&p) {
-                                return prev;
-                            }
-                            let components = p.components().collect::<Vec<_>>();
-                            for index in 1..=components.len() {
-                                let path = &components[..index].iter().fold(
-                                    PathBuf::new(),
-                                    |mut child, cur| {
-                                        child.push(PathBuf::from(cur));
-                                        child
-                                    },
-                                );
-                                prev.push(path.clone());
-                            }
-                        }
-                        prev
-                    });
+            let fold_task = |mut prev: Vec<_>, cur: &PathBuf| -> Vec<PathBuf> {
+                let local_path = PathBuf::from(local_path);
+                let skip_count = local_path
+                    .parent()
+                    .unwrap_or(&PathBuf::new())
+                    .components()
+                    .count();
+                let skip_count = if local_path.is_dir() && local_path.components().count() == 1 {
+                    1
+                } else {
+                    skip_count
+                };
+                let parent = cur
+                    .parent()
+                    .map(|parent| parent.components().skip(skip_count))
+                    .filter(|p| p.clone().count() > 0)
+                    .map(|p| p.collect::<PathBuf>());
+                if let Some(p) = parent {
+                    if prev.contains(&p) {
+                        return prev;
+                    }
+                    let components = p.components().collect::<Vec<_>>();
+                    for index in 1..=components.len() {
+                        let path =
+                            &components[..index]
+                                .iter()
+                                .fold(PathBuf::new(), |mut child, cur| {
+                                    child.push(PathBuf::from(cur));
+                                    child
+                                });
+                        prev.push(path.clone());
+                    }
+                }
+                prev
+            };
+            let all_parents: Vec<_> = files.iter().fold(vec![], fold_task);
             for parent in all_parents {
                 let mut remote = PathBuf::from(&remote_path);
                 remote.push(parent);
