@@ -1,5 +1,6 @@
 use crate::args::Args;
 use crate::eudora::{connect_and_init, get_args, is_hidden, remote_mkdir, upload};
+use crate::utils::fold_parents;
 
 use anyhow::{anyhow, Ok as AOk, Result};
 use clap::Parser;
@@ -15,6 +16,7 @@ use walkdir::WalkDir;
 
 mod args;
 mod eudora;
+mod utils;
 
 // Arguments
 static ARG: OnceLock<Args> = OnceLock::new();
@@ -76,42 +78,7 @@ fn main() -> Result<()> {
             let mut files = files.lock().await;
             // All element in files is files, so can use parent.
             // Create all parent folders.
-            let fold_task = |mut prev: Vec<_>, cur: &PathBuf| -> Vec<PathBuf> {
-                let local_path = PathBuf::from(local_path);
-                let skip_count = local_path
-                    .parent()
-                    .unwrap_or(&PathBuf::new())
-                    .components()
-                    .count();
-                let skip_count = if local_path.is_dir() && local_path.components().count() == 1 {
-                    1
-                } else {
-                    skip_count
-                };
-                let parent = cur
-                    .parent()
-                    .map(|parent| parent.components().skip(skip_count))
-                    .filter(|p| p.clone().count() > 0)
-                    .map(|p| p.collect::<PathBuf>());
-                if let Some(p) = parent {
-                    if prev.contains(&p) {
-                        return prev;
-                    }
-                    let components = p.components().collect::<Vec<_>>();
-                    for index in 1..=components.len() {
-                        let path =
-                            &components[..index]
-                                .iter()
-                                .fold(PathBuf::new(), |mut child, cur| {
-                                    child.push(PathBuf::from(cur));
-                                    child
-                                });
-                        prev.push(path.clone());
-                    }
-                }
-                prev
-            };
-            let all_parents: Vec<_> = files.iter().fold(vec![], fold_task);
+            let all_parents: Vec<_> = files.iter().fold(vec![], fold_parents(local_path));
             for parent in all_parents {
                 let mut remote = PathBuf::from(&remote_path);
                 remote.push(parent);
