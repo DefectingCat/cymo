@@ -180,7 +180,7 @@ pub async fn upload_files(ftp_stream: &mut AsyncFtpStream, i: usize, path: &Path
         }
     };
 
-    println!("Thread {} starting upload {:?}", i, &path);
+    println!("Thread {} uploading {:?}", i, &path);
     let mut local = File::open(&path).await?;
     let size_kb = local.metadata().await?.len() / 1000;
     let now = Instant::now();

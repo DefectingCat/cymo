@@ -43,13 +43,11 @@ fn main() -> Result<()> {
     let files = Arc::new(Mutex::new(files));
 
     // One more thread for send task for others
-    // TODO if file count less than cpu numbers, create threads same as file count
     let cpus = args
         .thread
-        .unwrap_or(thread::available_parallelism()?.get())
-        + 1;
+        .unwrap_or(thread::available_parallelism()?.get());
     let cpus = if files_count < cpus {
-        files_count + 1
+        files_count
     } else {
         cpus
     };
@@ -86,11 +84,9 @@ fn main() -> Result<()> {
             }
             // Total files length
             let len = files.len();
-            // Div by cpu nums - 1
-            let div = cpus - 1;
-            let (quotient, remainder) = (len / div, len % div); // calculate the quotient and remainders.send()
+            let (quotient, remainder) = (len / cpus, len % cpus); // calculate the quotient and remainders.send()
             let start = 0;
-            let sender = (0..div)
+            let sender = (0..cpus)
                 .map(|i| {
                     let end = if i < remainder {
                         // if i is less than the remainder, add one extra element to the smaller array
@@ -197,7 +193,7 @@ fn main() -> Result<()> {
 
         thread::spawn(task)
     };
-    let threads = (1..cpus).map(thread_task).collect::<Vec<_>>();
+    let threads = (1..=cpus).map(thread_task).collect::<Vec<_>>();
     for thread in threads {
         thread.join().map_err(|err| anyhow!("{:?}", err))?;
     }
