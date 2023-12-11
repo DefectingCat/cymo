@@ -4,16 +4,6 @@ stages:
 variables:
     APP_NAME: "cymo"
 
-build:amd64-linux-musl:
-  stage: build
-  image: messense/rust-musl-cross:x86_64-musl
-  script:
-    - cargo build --locked --target=x86_64-unknown-linux-musl --release
-    - echo "Compile complete."
-  artifacts:
-    paths:
-      - target/x86_64-unknown-linux-musl/release/$APP_NAME
-
 build:linux-gnu-amd64:
     stage: build
     image: rust:latest
@@ -68,6 +58,16 @@ build:windows-amd64:
     artifacts:
         paths:
             - public/$APP_NAME-x86_64-pc-windows-gnu-$CI_COMMIT_TAG.exe
+
+# build:amd64-linux-musl:
+#   stage: build
+#   image: messense/rust-musl-cross:x86_64-musl
+#   script:
+#     - cargo build --locked --target=x86_64-unknown-linux-musl --release
+#     - echo "Compile complete."
+#   artifacts:
+#     paths:
+#       - target/x86_64-unknown-linux-musl/release/$APP_NAME
 
 rustdoc:
     stage: build
