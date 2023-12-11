@@ -1,22 +1,26 @@
 stages:
-  - build
+    - build
 
 variables:
     APP_NAME: "cymo"
 
+image: "rust:latest"
+
+before_script:
+    - apt update -y
+    - mkdir $HOME/.cargo
+    - echo "[source.crates-io]" >> $HOME/.cargo/config
+    - echo "replace-with = 'ustc'" >> $HOME/.cargo/config
+    - echo "" >> $HOME/.cargo/config
+    - echo "[source.ustc]" >> $HOME/.cargo/config
+    - echo "registry = \"sparse+https://mirrors.ustc.edu.cn/crates.io-index/\"" >> $HOME/.cargo/config
+    - mkdir public
+
 build:linux-gnu-amd64:
     stage: build
-    image: rust:latest
     rules:
         - if: $CI_COMMIT_TAG
     script:
-        - mkdir $HOME/.cargo
-        - echo "[source.crates-io]" >> $HOME/.cargo/config
-        - echo "replace-with = 'ustc'" >> $HOME/.cargo/config
-        - echo "" >> $HOME/.cargo/config
-        - echo "[source.ustc]" >> $HOME/.cargo/config
-        - echo "registry = \"sparse+https://mirrors.ustc.edu.cn/crates.io-index/\"" >> $HOME/.cargo/config
-        - mkdir public
         - cargo build --release
         - "mv target/release/$APP_NAME target/release/$APP_NAME-x86_64-unknown-linux-gnu-$CI_COMMIT_TAG"
         - "mv target/release/$APP_NAME-x86_64-unknown-linux-gnu-$CI_COMMIT_TAG public/"
@@ -26,15 +30,12 @@ build:linux-gnu-amd64:
 
 build:linux-musl-amd64:
     stage: build
-    image: rust:latest
     rules:
         - if: $CI_COMMIT_TAG
     script:
-        - apt update
-        - apt install -y musl-tools
+        - apt install -y musl-tools libssl-dev
         - rustup target add x86_64-unknown-linux-musl
         - cargo build --release --target x86_64-unknown-linux-musl
-        - mkdir public
         - "mv target/x86_64-unknown-linux-musl/release/$APP_NAME target/x86_64-unknown-linux-musl/release/$APP_NAME-x86_64-unknown-linux-musl-$CI_COMMIT_TAG"
         - "mv target/x86_64-unknown-linux-musl/release/$APP_NAME-x86_64-unknown-linux-musl-$CI_COMMIT_TAG public/"
     artifacts:
@@ -43,35 +44,21 @@ build:linux-musl-amd64:
 
 build:windows-amd64:
     stage: build
-    image: rust:latest
     rules:
         - if: $CI_COMMIT_TAG
     script:
-        - apt update
         - apt install -y g++-mingw-w64-x86-64
         - rustup target add x86_64-pc-windows-gnu
         - rustup toolchain install stable-x86_64-pc-windows-gnu
         - cargo build --release --target x86_64-pc-windows-gnu
-        - mkdir public
         - "mv target/x86_64-pc-windows-gnu/release/$APP_NAME.exe target/x86_64-pc-windows-gnu/release/$APP_NAME-x86_64-pc-windows-gnu-$CI_COMMIT_TAG.exe"
         - "mv target/x86_64-pc-windows-gnu/release/$APP_NAME-x86_64-pc-windows-gnu-$CI_COMMIT_TAG.exe public/"
     artifacts:
         paths:
             - public/$APP_NAME-x86_64-pc-windows-gnu-$CI_COMMIT_TAG.exe
 
-# build:amd64-linux-musl:
-#   stage: build
-#   image: messense/rust-musl-cross:x86_64-musl
-#   script:
-#     - cargo build --locked --target=x86_64-unknown-linux-musl --release
-#     - echo "Compile complete."
-#   artifacts:
-#     paths:
-#       - target/x86_64-unknown-linux-musl/release/$APP_NAME
-
 rustdoc:
     stage: build
-    image: rust
     rules:
         - if: $CI_COMMIT_TAG
     script:
@@ -97,4 +84,3 @@ rustdoc:
 #              url: "https://git.rua.plus/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}/cw/-/jobs/${CI_JOB_ID}/artifacts/file/public/$APP_NAME-x86_64-unknown-linux-musl-$CI_COMMIT_TAG"
 #            - name: "ua-list-x86_64-pc-windows-gnu-$CI_COMMIT_TAG.exe"
 #              url: "https://git.rua.plus/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}/cw/-/jobs/${CI_JOB_ID}/artifacts/file/public/ua-list-x86_64-pc-windows-gnu-$CI_COMMIT_TAG.exe"
-
