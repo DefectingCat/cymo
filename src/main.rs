@@ -1,6 +1,6 @@
 use crate::args::Args;
-use crate::eudora::{connect_and_init, get_args, is_hidden, remote_mkdir, upload};
-use crate::utils::{build_worker_task, fold_parents};
+use crate::eudora::{connect_and_init, get_args, is_hidden, upload};
+use crate::utils::build_worker_task;
 use anyhow::{anyhow, Ok as AOk, Result};
 use clap::Parser;
 use crossbeam_channel::unbounded;
@@ -10,7 +10,7 @@ use std::{
     thread,
 };
 use suppaftp::AsyncFtpStream;
-use tokio::{runtime, sync::Mutex};
+use tokio::runtime;
 use walkdir::WalkDir;
 
 mod args;
@@ -39,7 +39,7 @@ fn main() -> Result<()> {
     files.sort_by_key(|a| a.components().count());
     // Found files
     let files_count = files.len();
-    let files = Arc::new(Mutex::new(files));
+    // let files = Arc::new(Mutex::new(files));
 
     // One more thread for send task for others
     let cpus = args
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
 
     // This channel used by send all files to be upload to child threads
     let (s, r) = unbounded();
-    thread::spawn(build_worker_task(files.clone(), cpus, s));
+    thread::spawn(build_worker_task(files, cpus, s));
 
     // All threads total uploads count
     let file_count = Arc::new(StdMutex::new(0_usize));

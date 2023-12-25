@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{anyhow, Ok as AOk, Result};
 use crossbeam_channel::Sender;
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 use suppaftp::AsyncFtpStream;
 use tokio::runtime;
 
@@ -70,10 +70,10 @@ pub fn fold_parents(local_path: &String) -> impl Fn(Vec<PathBuf>, &PathBuf) -> V
 ///
 /// The function will failure when create parent folders on ftp server.
 pub fn build_worker_task(
-    files: Arc<tokio::sync::Mutex<Vec<PathBuf>>>,
+    mut files: Vec<PathBuf>,
     cpus: usize,
     sender: Sender<Vec<PathBuf>>,
-) -> impl Fn() {
+) -> impl FnMut() {
     move || {
         let rt = runtime::Builder::new_current_thread().build().unwrap();
         let task = async {
@@ -92,7 +92,6 @@ pub fn build_worker_task(
             let _ = connect_and_init(ftp_stream.as_mut(), 0).await;
             let mut ftp_stream = ftp_stream?;
 
-            let mut files = files.lock().await;
             // All element in files is files, so can use parent.
             // Create all parent folders.
             let all_parents: Vec<_> = files.iter().fold(vec![], fold_parents(local_path));
