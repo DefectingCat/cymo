@@ -1,7 +1,6 @@
 use crate::args::Args;
 use crate::eudora::{connect_and_init, get_args, is_hidden, remote_mkdir, upload};
-use crate::utils::fold_parents;
-
+use crate::utils::{build_worker_task, fold_parents};
 use anyhow::{anyhow, Ok as AOk, Result};
 use clap::Parser;
 use crossbeam_channel::unbounded;
@@ -54,69 +53,7 @@ fn main() -> Result<()> {
 
     // This channel used by send all files to be upload to child threads
     let (s, r) = unbounded();
-    // This thread prepare each threads files to upload.
-    let task = move || {
-        let rt = runtime::Builder::new_current_thread().build().unwrap();
-        let task = async {
-            let Args {
-                server,
-                port,
-                local_path,
-                remote_path,
-                ..
-            } = get_args()?;
-            let addr = format!("{}:{}", server, port);
-            let mut ftp_stream = AsyncFtpStream::connect(addr).await.map_err(|err| {
-                eprintln!("Thread main connnect failed {}", err);
-                anyhow!("{}", err)
-            });
-            let _ = connect_and_init(ftp_stream.as_mut(), 0).await;
-            let mut ftp_stream = ftp_stream?;
-
-            let mut files = files.lock().await;
-            // All element in files is files, so can use parent.
-            // Create all parent folders.
-            let all_parents: Vec<_> = files.iter().fold(vec![], fold_parents(local_path));
-            for parent in all_parents {
-                let mut remote = PathBuf::from(&remote_path);
-                remote.push(parent);
-                remote_mkdir(&mut ftp_stream, 0, &remote.to_string_lossy()).await?;
-            }
-            // Total files length
-            let len = files.len();
-            let (quotient, remainder) = (len / cpus, len % cpus); // calculate the quotient and remainders.send()
-            let start = 0;
-            let sender = (0..cpus)
-                .map(|i| {
-                    let end = if i < remainder {
-                        // if i is less than the remainder, add one extra element to the smaller array
-                        start + quotient + 1
-                    } else {
-                        // otherwise, use the quotient as the size of the smaller array
-                        start + quotient
-                    };
-                    let file_data = files.drain(start..end).collect::<Vec<_>>();
-                    s.send(file_data)?;
-                    AOk(())
-                })
-                .collect::<Result<Vec<_>>>();
-            AOk((sender, len))
-        };
-        let (result, len) = rt.block_on(task).unwrap();
-        match result {
-            // TODO retry, when files is empty, exit threads
-            Ok(_) => {
-                println!("Total send {} files", len);
-            }
-            Err(err) => {
-                eprintln!(
-                    "Send files to thread failed {:?}. {} files not send",
-                    err, len
-                );
-            }
-        }
-    };
-    thread::spawn(task);
+    thread::spawn(build_worker_task(files.clone(), cpus, s));
 
     // All threads total uploads count
     let file_count = Arc::new(StdMutex::new(0_usize));
