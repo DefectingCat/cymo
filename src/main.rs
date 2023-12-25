@@ -1,7 +1,7 @@
 use crate::args::Args;
-use crate::eudora::{connect_and_init, get_args, is_hidden, upload};
-use crate::utils::build_worker_task;
-use anyhow::{anyhow, Ok as AOk, Result};
+use crate::eudora::is_hidden;
+use crate::utils::{build_worker_task, create_thread_task};
+use anyhow::{anyhow, Result};
 use clap::Parser;
 use crossbeam_channel::unbounded;
 use std::{
@@ -9,8 +9,7 @@ use std::{
     sync::{Arc, Mutex as StdMutex, OnceLock},
     thread,
 };
-use suppaftp::AsyncFtpStream;
-use tokio::runtime;
+
 use walkdir::WalkDir;
 
 mod args;
@@ -59,81 +58,16 @@ fn main() -> Result<()> {
     let file_count = Arc::new(StdMutex::new(0_usize));
     // All threads failed files
     let failed_files = Arc::new(StdMutex::new(Vec::<PathBuf>::new()));
-    let thread_task = |i| {
-        let r = r.clone();
-        let file_count = file_count.clone();
-        let failed_files = failed_files.clone();
-        let task = move || {
-            let rt = runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            let handle = rt.block_on(async {
-                let Args { server, port, .. } = get_args()?;
-                let addr = format!("{}:{}", server, port);
-                println!("Thread {} connecting {}", i, &addr);
-                // TODO read username and password in environment
-                let mut ftp_stream = AsyncFtpStream::connect(addr).await.map_err(|err| {
-                    eprintln!("Thread {} connnect failed {}", i, err);
-                    anyhow!("{}", err)
-                });
-                let _ = connect_and_init(ftp_stream.as_mut(), i).await;
-
-                let mut current_failed = vec![];
-                // Receive files from main thread.
-                let mut thread_count = 0_usize;
-                for (count, path) in (r.recv()?).into_iter().enumerate() {
-                    let ftp_stream = if let Ok(stream) = ftp_stream.as_mut() {
-                        stream
-                    } else {
-                        current_failed.push(path);
-                        continue;
-                    };
-                    match upload(ftp_stream, i, &path, 0).await {
-                        Ok(_) => {
-                            thread_count = count + 1;
-                        }
-                        Err(err) => {
-                            eprintln!("Thread {} upload {:?} failed, {}", i, path, err);
-                            current_failed.push(path);
-                        }
-                    }
-                }
-                file_count
-                    .lock()
-                    .map(|mut file_count| {
-                        if thread_count == 0 {
-                            return;
-                        }
-                        *file_count += thread_count;
-                        println!("Thread {} uploaded {} files", i, thread_count);
-                    })
-                    .map_err(|err| anyhow!("Thread {} write file cout failed {}", i, err))?;
-                if !current_failed.is_empty() {
-                    failed_files
-                        .lock()
-                        .map(|mut failed_files| {
-                            failed_files.append(&mut current_failed);
-                        })
-                        .map_err(|err| {
-                            anyhow!("Thread {} collect failed files failed {}", i, err)
-                        })?;
-                }
-                println!("Thread {} exiting", i);
-                ftp_stream?.quit().await?;
-                AOk(())
-            });
-            if let Err(err) = handle {
-                eprintln!("Thread {} got error {}", i, err);
-            };
-        };
-
-        thread::spawn(task)
-    };
-    let threads = (1..=cpus).map(thread_task).collect::<Vec<_>>();
-    for thread in threads {
-        thread.join().map_err(|err| anyhow!("{:?}", err))?;
-    }
+    let threads = (1..=cpus)
+        .map(create_thread_task(
+            r,
+            file_count.clone(),
+            failed_files.clone(),
+        ))
+        .collect::<Vec<_>>();
+    threads
+        .into_iter()
+        .try_for_each(|thread| thread.join().map_err(|err| anyhow!("{:?}", err)))?;
 
     let failed_count = failed_files
         .lock()

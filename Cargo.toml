@@ -1,6 +1,6 @@
 [package]
 name = "cymo"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -26,5 +26,5 @@ tempfile = "3.8.1"
 lto = true
 panic = "abort"   # Strip expensive panic clean-up logic
 codegen-units = 1 # Compile crates one after another so the compiler can optimize better
-opt-level = "s"   # Optimize for binary size
-strip = true      # Remove debug symbols
+# opt-level = "s"   # Optimize for binary size
+strip = true # Remove debug symbols

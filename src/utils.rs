@@ -1,10 +1,14 @@
 use crate::{
     args::Args,
-    eudora::{connect_and_init, get_args, remote_mkdir},
+    eudora::{connect_and_init, get_args, remote_mkdir, upload},
 };
 use anyhow::{anyhow, Ok as AOk, Result};
-use crossbeam_channel::Sender;
-use std::path::PathBuf;
+use crossbeam_channel::{Receiver, Sender};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    thread::{self, JoinHandle},
+};
 use suppaftp::AsyncFtpStream;
 use tokio::runtime;
 
@@ -133,5 +137,99 @@ pub fn build_worker_task(
                 );
             }
         };
+    }
+}
+
+/// Build upload threads.
+///
+/// This function will be build tokio async runtime in single
+/// thread. And connect to ftp server in the runtime.
+///
+/// ## Arguments
+///
+/// - `receiver`: file list receiver.
+/// - `file_count`: file list length.
+/// - `failed_files`: file list for sent failed.
+///
+/// ## Return
+///
+/// A std thread handler `JoinHandle<()>`.
+pub fn create_thread_task(
+    receiver: Receiver<Vec<PathBuf>>,
+    file_count: Arc<Mutex<usize>>,
+    failed_files: Arc<Mutex<Vec<PathBuf>>>,
+) -> impl Fn(usize) -> JoinHandle<()> {
+    move |i| {
+        let r = receiver.clone();
+        let file_count = file_count.clone();
+        let failed_files = failed_files.clone();
+        let thread_task = move || {
+            let rt = runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("create tokio runtime failed");
+
+            let async_task = async {
+                let Args { server, port, .. } = get_args()?;
+                let addr = format!("{}:{}", server, port);
+                println!("Thread {} connecting {}", i, &addr);
+                // TODO read username and password in environment
+                let mut ftp_stream = AsyncFtpStream::connect(addr).await.map_err(|err| {
+                    eprintln!("Thread {} connnect failed {}", i, err);
+                    anyhow!("{}", err)
+                });
+                let _ = connect_and_init(ftp_stream.as_mut(), i).await;
+
+                let mut current_failed = vec![];
+                // Receive files from main thread.
+                let mut thread_count = 0_usize;
+                for (count, path) in (r.recv()?).into_iter().enumerate() {
+                    let ftp_stream = if let Ok(stream) = ftp_stream.as_mut() {
+                        stream
+                    } else {
+                        current_failed.push(path);
+                        continue;
+                    };
+                    match upload(ftp_stream, i, &path, 0).await {
+                        Ok(_) => {
+                            thread_count = count + 1;
+                        }
+                        Err(err) => {
+                            eprintln!("Thread {} upload {:?} failed, {}", i, path, err);
+                            current_failed.push(path);
+                        }
+                    }
+                }
+                file_count
+                    .lock()
+                    .map(|mut file_count| {
+                        if thread_count == 0 {
+                            return;
+                        }
+                        *file_count += thread_count;
+                        println!("Thread {} uploaded {} files", i, thread_count);
+                    })
+                    .map_err(|err| anyhow!("Thread {} write file cout failed {}", i, err))?;
+                if !current_failed.is_empty() {
+                    failed_files
+                        .lock()
+                        .map(|mut failed_files| {
+                            failed_files.append(&mut current_failed);
+                        })
+                        .map_err(|err| {
+                            anyhow!("Thread {} collect failed files failed {}", i, err)
+                        })?;
+                }
+                println!("Thread {} exiting", i);
+                ftp_stream?.quit().await?;
+                AOk(())
+            };
+            let async_handle = rt.block_on(async_task);
+            if let Err(err) = async_handle {
+                eprintln!("Thread {} got error {}", i, err);
+            };
+        };
+
+        thread::spawn(thread_task)
     }
 }
