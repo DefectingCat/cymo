@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.8] - 2023-11-23
+
+### Added
+
+-   Auto thread number detect.
+-   Upload speed calculate.
+-   Improve performance for build file list.
+
+### Fixed
+
+-   Remove useless cpu count.
+-   Remove dependencies doc for `cargo doc`.
+
 ## [0.2.7] - 2023-11-23
 
 ### Fixed
