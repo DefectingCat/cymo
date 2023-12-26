@@ -7,7 +7,7 @@ variables:
 image: "rust:latest"
 
 before_script:
-    - apt update -y
+    - apt-get update -y
     - mkdir $HOME/.cargo
     - echo "[source.crates-io]" >> $HOME/.cargo/config
     - echo "replace-with = 'ustc'" >> $HOME/.cargo/config
@@ -33,7 +33,8 @@ build:linux-musl-amd64:
     rules:
         - if: $CI_COMMIT_TAG
     script:
-        - apt install -y musl-tools libssl-dev
+        - apt-get update -y
+        - apt-get install -y musl-tools libssl-dev pkg-config libudev-dev
         - rustup target add x86_64-unknown-linux-musl
         - cargo build --release --target x86_64-unknown-linux-musl
         - "mv target/x86_64-unknown-linux-musl/release/$APP_NAME target/x86_64-unknown-linux-musl/release/$APP_NAME-x86_64-unknown-linux-musl-$CI_COMMIT_TAG"
@@ -47,7 +48,8 @@ build:windows-amd64:
     rules:
         - if: $CI_COMMIT_TAG
     script:
-        - apt install -y g++-mingw-w64-x86-64
+        - apt-get update -y
+        - apt-get install -y g++-mingw-w64-x86-64
         - rustup target add x86_64-pc-windows-gnu
         - rustup toolchain install stable-x86_64-pc-windows-gnu
         - cargo build --release --target x86_64-pc-windows-gnu
@@ -66,21 +68,3 @@ rustdoc:
     artifacts:
         paths:
             - target/doc
-#release_job:
-#    stage: release
-#    image: registry.gitlab.com/gitlab-org/release-cli:latest
-#    rules:
-#        - if: $CI_COMMIT_TAG # Run this job when a tag is created
-#    script:
-#        - echo "running release_job"
-#    release: # See https://docs.gitlab.com/ee/ci/yaml/#release for available properties
-#        tag_name: "$CI_COMMIT_TAG"
-#        description: "$CI_COMMIT_TAG"
-#    assets:
-#        links:
-#            - name: "$APP_NAME-x86_64-unknown-linux-gnu-$CI_COMMIT_TAG"
-#              url: "https://git.rua.plus/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}/cw/-/jobs/${CI_JOB_ID}/artifacts/file/public/$APP_NAME-x86_64-unknown-linux-gnu-$CI_COMMIT_TAG"
-#            - name: "$APP_NAME-x86_64-unknown-linux-musl-$CI_COMMIT_TAG"
-#              url: "https://git.rua.plus/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}/cw/-/jobs/${CI_JOB_ID}/artifacts/file/public/$APP_NAME-x86_64-unknown-linux-musl-$CI_COMMIT_TAG"
-#            - name: "ua-list-x86_64-pc-windows-gnu-$CI_COMMIT_TAG.exe"
-#              url: "https://git.rua.plus/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}/cw/-/jobs/${CI_JOB_ID}/artifacts/file/public/ua-list-x86_64-pc-windows-gnu-$CI_COMMIT_TAG.exe"
