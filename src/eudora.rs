@@ -87,19 +87,19 @@ pub async fn change_remote(
         return Ok(());
     }
 
+    let param_length = param_path
+        .parent()
+        .unwrap_or(&PathBuf::new())
+        .components()
+        .collect::<Vec<_>>()
+        .len();
+    let param_length = if param_length == 0 { 1 } else { param_length };
     // Skip folders from params
     let parents = parents
         .components()
         .collect::<Vec<_>>()
         .into_iter()
-        .skip(
-            param_path
-                .parent()
-                .unwrap_or(&PathBuf::new())
-                .components()
-                .collect::<Vec<_>>()
-                .len(),
-        )
+        .skip(param_length)
         .collect::<Vec<_>>();
 
     // The final remote path
