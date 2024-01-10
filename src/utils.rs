@@ -29,12 +29,8 @@ pub fn fold_parents(local_path: &String) -> impl Fn(Vec<PathBuf>, &PathBuf) -> V
             .parent()
             .unwrap_or(&PathBuf::new())
             .components()
-            .count();
-        let skip_count = if local_path.is_dir() && local_path.components().count() == 1 {
-            1
-        } else {
-            skip_count
-        };
+            .count()
+            + 1;
         let parent = cur
             .parent()
             .map(|parent| parent.components().skip(skip_count))

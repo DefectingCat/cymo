@@ -92,8 +92,8 @@ pub async fn change_remote(
         .unwrap_or(&PathBuf::new())
         .components()
         .collect::<Vec<_>>()
-        .len();
-    let param_length = if param_length == 0 { 1 } else { param_length };
+        .len()
+        + 1;
     // Skip folders from params
     let parents = parents
         .components()
