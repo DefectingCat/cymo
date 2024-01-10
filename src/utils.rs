@@ -200,16 +200,15 @@ pub fn create_thread_task(
                         }
                     }
                 }
-                file_count
-                    .lock()
-                    .map(|mut file_count| {
-                        if thread_count == 0 {
-                            return;
-                        }
-                        *file_count += thread_count;
-                        println!("Thread {} uploaded {} files", i, thread_count);
-                    })
-                    .map_err(|err| anyhow!("Thread {} write file cout failed {}", i, err))?;
+                if thread_count != 0 {
+                    file_count
+                        .lock()
+                        .map(|mut file_count| {
+                            *file_count += thread_count;
+                            println!("Thread {} uploaded {} files", i, thread_count);
+                        })
+                        .map_err(|err| anyhow!("Thread {} write file cout failed {}", i, err))?;
+                }
                 if !current_failed.is_empty() {
                     failed_files
                         .lock()

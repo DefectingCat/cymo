@@ -28,6 +28,7 @@ fn main() -> Result<()> {
     PARAM_PATH.get_or_init(|| PathBuf::from(&args.local_path));
     REMOTE_PATH.get_or_init(|| PathBuf::from(&args.remote_path));
     let args = ARG.get_or_init(|| args);
+    // Found files
     let mut files = WalkDir::new(&args.local_path)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -36,9 +37,7 @@ fn main() -> Result<()> {
         .filter(|e| e.is_file())
         .collect::<Vec<_>>();
     files.sort_by_key(|a| a.components().count());
-    // Found files
     let files_count = files.len();
-    // let files = Arc::new(Mutex::new(files));
 
     // One more thread for send task for others
     let cpus = args

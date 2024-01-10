@@ -92,7 +92,14 @@ pub async fn change_remote(
         .components()
         .collect::<Vec<_>>()
         .into_iter()
-        .skip(param_path.parent().iter().len())
+        .skip(
+            param_path
+                .parent()
+                .unwrap_or(&PathBuf::new())
+                .components()
+                .collect::<Vec<_>>()
+                .len(),
+        )
         .collect::<Vec<_>>();
 
     // The final remote path
