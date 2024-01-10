@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.9] - 2024-01-10
+
+### Fixed
+
+-   Upload failed when local params too long.
+
 ## [0.2.8] - 2023-11-23
 
 ### Added
